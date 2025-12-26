@@ -19,10 +19,10 @@ class Config:
     WHATSAPP_WEB_URL = "https://web.whatsapp.com"
     
     # Limits
-    MAX_DAILY_CONTACTS = 30
-    MIN_INTERVAL_SECONDS = 120
-    WORKING_HOURS_START = 8
-    WORKING_HOURS_END = 20
+    MAX_DAILY_CONTACTS = 60
+    MIN_INTERVAL_SECONDS = 60
+    WORKING_HOURS_START = 7
+    WORKING_HOURS_END = 23
     
     # Backup
     BACKUP_AUTO = True
