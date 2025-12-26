@@ -1,0 +1,29 @@
+# Core
+python-dateutil==2.8.2
+python-dotenv==1.0.0
+
+# Database
+# sqlcipher3==0.5.2  # Commented out for Windows compatibility
+# pysqlcipher3==1.2.0  # Commented out for Windows compatibility
+
+# Automation
+selenium==4.15.2
+webdriver-manager==4.0.1
+
+# UI
+pillow>=9.0.0
+ttkthemes==3.2.2
+
+# Reports & Charts
+matplotlib>=3.0.0
+reportlab==4.0.7
+pandas>=1.0.0
+openpyxl>=3.0.0
+
+# Security
+cryptography==41.0.7
+bcrypt==4.1.2
+
+# Utils
+validators==0.22.0
+phonenumbers==8.13.27

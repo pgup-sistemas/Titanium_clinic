@@ -1,0 +1,3071 @@
+# Titanium Clínica - Documentação Técnica Completa v2.0
+## Sistema Seguro de Confirmação Humanizada no WhatsApp
+
+---
+
+## 📋 ÍNDICE
+
+1. [Visão Geral](#1-visão-geral)
+2. [Estrutura do Projeto](#2-estrutura-do-projeto)
+3. [Dependências](#3-dependências)
+4. [Banco de Dados](#4-banco-de-dados)
+5. [Sistema de Autenticação](#5-sistema-de-autenticação)
+6. [Backend Completo](#6-backend-completo)
+7. [Frontend Tkinter](#7-frontend-tkinter)
+8. [Automação WhatsApp](#8-automação-whatsapp)
+9. [Segurança e LGPD](#9-segurança-e-lgpd)
+10. [Dashboard e Relatórios](#10-dashboard-e-relatórios)
+11. [Implementação Passo a Passo](#11-implementação-passo-a-passo)
+
+---
+
+## 1. Visão Geral
+
+### 1.1 Objetivo
+Sistema desktop para clínicas que **organiza contatos**, **prepara mensagens humanizadas** e **auxilia na confirmação de consultas** via WhatsApp, com conformidade LGPD e proteção anti-bloqueio.
+
+### 1.2 Características-chave
+- ✅ Desktop Windows/Linux
+- ✅ Python puro com Tkinter
+- ✅ Banco SQLite criptografado
+- ✅ Sistema de login e perfis
+- ✅ Automação assistida (nunca envia sozinho)
+- ✅ 500+ variações de mensagens
+- ✅ Dashboard com gráficos
+- ✅ Conformidade LGPD
+- ✅ Backup automático
+- ✅ Log de auditoria completo
+
+### 1.3 Fluxo Principal
+```
+1. Paciente cadastrado → Consentimento LGPD
+2. Sistema prepara mensagem personalizada
+3. Atendente revisa no sistema
+4. Sistema cola no WhatsApp Web (sem enviar)
+5. Atendente confere e clica ENTER manualmente
+6. Sistema registra envio e aguarda resposta
+```
+
+---
+
+## 2. Estrutura do Projeto
+
+```
+titanium_clinica/
+│
+├── README.md
+├── requirements.txt
+├── .env.example
+├── setup.py
+│
+├── app.py                      # Ponto de entrada
+├── config.py                   # Configurações globais
+│
+├── backend/
+│   ├── __init__.py
+│   ├── database.py             # Conexão SQLite criptografado
+│   ├── models.py               # CRUD completo
+│   ├── auth.py                 # Sistema de login
+│   ├── messaging.py            # Geração de mensagens
+│   ├── limits.py               # Controle anti-bloqueio
+│   ├── security.py             # Validações de segurança
+│   ├── backup.py               # Sistema de backup
+│   ├── audit.py                # Log de auditoria
+│   ├── lgpd.py                 # Conformidade LGPD
+│   ├── reporting.py            # Geração de relatórios
+│   └── populate_messages.py    # Popular 500+ mensagens
+│
+├── frontend/
+│   ├── __init__.py
+│   ├── login_window.py         # Tela de login
+│   ├── main_window.py          # Janela principal
+│   ├── patient_view.py         # Lista de pacientes
+│   ├── message_preview.py      # Preview da mensagem
+│   ├── dashboard.py            # Dashboard com gráficos
+│   ├── reports_view.py         # Visualização de relatórios
+│   ├── settings_view.py        # Configurações
+│   ├── user_management.py      # Gestão de usuários
+│   └── dialogs.py              # Diálogos e alertas
+│
+├── automation/
+│   ├── __init__.py
+│   └── whatsapp.py             # Integração WhatsApp Web
+│
+├── data/
+│   ├── titanium_clinica.db     # Banco principal (criptografado)
+│   ├── backups/                # Backups automáticos
+│   └── logs/                   # Logs do sistema
+│
+├── assets/
+│   ├── icon.ico
+│   ├── logo.png
+│   └── styles/
+│       └── theme.json
+│
+├── docs/
+│   ├── manual_usuario.md
+│   ├── politica_lgpd.md
+│   ├── termo_consentimento.md
+│   └── guia_implementacao.md
+│
+└── tests/
+    ├── test_database.py
+    ├── test_messaging.py
+    ├── test_limits.py
+    └── test_security.py
+```
+
+---
+
+## 3. Dependências
+
+### requirements.txt
+```txt
+# Core
+python-dateutil==2.8.2
+python-dotenv==1.0.0
+
+# Database
+sqlcipher3==0.5.2
+pysqlcipher3==1.2.0
+
+# Automation
+selenium==4.15.2
+webdriver-manager==4.0.1
+
+# UI
+pillow==10.1.0
+ttkthemes==3.2.2
+
+# Reports & Charts
+matplotlib==3.8.2
+reportlab==4.0.7
+pandas==2.1.4
+
+# Security
+cryptography==41.0.7
+bcrypt==4.1.2
+
+# Utils
+validators==0.22.0
+phonenumbers==8.13.27
+```
+
+### Instalação
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## 4. Banco de Dados
+
+### 4.1 Schema Completo
+
+```sql
+-- ============================================
+-- USUÁRIOS E AUTENTICAÇÃO
+-- ============================================
+
+CREATE TABLE usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    senha_hash TEXT NOT NULL,
+    nome_completo TEXT NOT NULL,
+    email TEXT UNIQUE,
+    perfil TEXT CHECK(perfil IN ('admin', 'gestor', 'atendente')) NOT NULL,
+    ativo BOOLEAN DEFAULT 1,
+    data_criacao DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ultimo_acesso DATETIME,
+    criado_por INTEGER,
+    FOREIGN KEY (criado_por) REFERENCES usuarios(id)
+);
+
+CREATE TABLE sessoes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id INTEGER NOT NULL,
+    token TEXT UNIQUE NOT NULL,
+    ip_maquina TEXT,
+    data_login DATETIME DEFAULT CURRENT_TIMESTAMP,
+    data_logout DATETIME,
+    ativo BOOLEAN DEFAULT 1,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+);
+
+-- ============================================
+-- PACIENTES E CONSENTIMENTO LGPD
+-- ============================================
+
+CREATE TABLE pacientes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    telefone TEXT NOT NULL,
+    telefone_formatado TEXT,
+    email TEXT,
+    data_nascimento DATE,
+    cpf TEXT,
+    
+    -- Consulta
+    data_consulta DATE NOT NULL,
+    hora_consulta TIME NOT NULL,
+    tipo_consulta TEXT,
+    profissional TEXT,
+    observacoes TEXT,
+    
+    -- Status da confirmação
+    status TEXT CHECK(status IN (
+        'pendente',
+        'mensagem_preparada',
+        'mensagem_enviada',
+        'confirmado',
+        'reagendado',
+        'cancelado',
+        'sem_resposta'
+    )) DEFAULT 'pendente',
+    
+    -- Mensagem preparada
+    mensagem_preparada TEXT,
+    fase_conversa TEXT DEFAULT 'primeiro_contato',
+    data_preparo DATETIME,
+    data_envio DATETIME,
+    data_resposta DATETIME,
+    
+    -- LGPD
+    consentimento_whatsapp BOOLEAN DEFAULT 0,
+    data_consentimento DATETIME,
+    consentimento_obtido_por INTEGER,
+    forma_consentimento TEXT CHECK(forma_consentimento IN ('verbal', 'escrito', 'digital')),
+    termos_versao TEXT,
+    
+    -- Controle
+    tentativas_contato INTEGER DEFAULT 0,
+    ultima_tentativa DATETIME,
+    numero_valido BOOLEAN DEFAULT 1,
+    whatsapp_ativo BOOLEAN DEFAULT 1,
+    
+    -- Auditoria
+    data_cadastro DATETIME DEFAULT CURRENT_TIMESTAMP,
+    cadastrado_por INTEGER,
+    data_atualizacao DATETIME,
+    atualizado_por INTEGER,
+    
+    FOREIGN KEY (consentimento_obtido_por) REFERENCES usuarios(id),
+    FOREIGN KEY (cadastrado_por) REFERENCES usuarios(id),
+    FOREIGN KEY (atualizado_por) REFERENCES usuarios(id)
+);
+
+CREATE INDEX idx_pacientes_telefone ON pacientes(telefone);
+CREATE INDEX idx_pacientes_data_consulta ON pacientes(data_consulta);
+CREATE INDEX idx_pacientes_status ON pacientes(status);
+
+-- ============================================
+-- BANCO DE MENSAGENS (500+)
+-- ============================================
+
+CREATE TABLE mensagens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tipo TEXT CHECK(tipo IN (
+        'primeiro_contato',
+        'confirmacao',
+        'lembrete',
+        'reagendamento',
+        'follow_up'
+    )) NOT NULL,
+    texto TEXT NOT NULL,
+    categoria TEXT,
+    tom TEXT CHECK(tom IN ('formal', 'amigavel', 'neutro')),
+    usa_emoji BOOLEAN DEFAULT 0,
+    variacao_grupo INTEGER,
+    ativo BOOLEAN DEFAULT 1,
+    data_criacao DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_mensagens_tipo ON mensagens(tipo);
+
+-- ============================================
+-- HISTÓRICO DE MENSAGENS
+-- ============================================
+
+CREATE TABLE historico_mensagens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    paciente_id INTEGER NOT NULL,
+    mensagem_id INTEGER,
+    mensagem_texto TEXT NOT NULL,
+    tipo_mensagem TEXT NOT NULL,
+    data_preparacao DATETIME,
+    data_envio DATETIME,
+    enviado_por INTEGER,
+    status_envio TEXT CHECK(status_envio IN (
+        'preparada',
+        'enviada',
+        'respondida',
+        'sem_resposta'
+    )),
+    FOREIGN KEY (paciente_id) REFERENCES pacientes(id),
+    FOREIGN KEY (mensagem_id) REFERENCES mensagens(id),
+    FOREIGN KEY (enviado_por) REFERENCES usuarios(id)
+);
+
+-- ============================================
+-- CONTROLE DE LIMITES ANTI-BLOQUEIO
+-- ============================================
+
+CREATE TABLE controle_envio (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    data DATE NOT NULL,
+    numero_telefone TEXT NOT NULL,
+    tipo_mensagem TEXT NOT NULL,
+    total_enviado INTEGER DEFAULT 0,
+    ultimo_envio DATETIME,
+    usuario_id INTEGER,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+    UNIQUE(data, numero_telefone)
+);
+
+CREATE TABLE limites_sistema (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tipo_limite TEXT UNIQUE NOT NULL,
+    valor_limite INTEGER NOT NULL,
+    descricao TEXT,
+    ativo BOOLEAN DEFAULT 1
+);
+
+-- Inserir limites padrão
+INSERT INTO limites_sistema (tipo_limite, valor_limite, descricao) VALUES
+('max_primeiros_contatos_dia', 30, 'Máximo de primeiros contatos por dia'),
+('intervalo_minimo_segundos', 120, 'Intervalo mínimo entre envios (2 min)'),
+('max_tentativas_paciente', 3, 'Máximo de tentativas por paciente'),
+('horario_inicio', 8, 'Horário início de envios (8h)'),
+('horario_fim', 20, 'Horário fim de envios (20h)');
+
+-- ============================================
+-- LOG DE AUDITORIA
+-- ============================================
+
+CREATE TABLE log_auditoria (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id INTEGER,
+    acao TEXT NOT NULL,
+    tabela TEXT,
+    registro_id INTEGER,
+    dados_anteriores TEXT,
+    dados_novos TEXT,
+    ip_maquina TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+);
+
+CREATE INDEX idx_audit_usuario ON log_auditoria(usuario_id);
+CREATE INDEX idx_audit_timestamp ON log_auditoria(timestamp);
+
+-- ============================================
+-- CONFIGURAÇÕES DO SISTEMA
+-- ============================================
+
+CREATE TABLE configuracoes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chave TEXT UNIQUE NOT NULL,
+    valor TEXT,
+    tipo TEXT CHECK(tipo IN ('string', 'integer', 'boolean', 'json')),
+    descricao TEXT,
+    editavel BOOLEAN DEFAULT 1,
+    data_atualizacao DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Configurações padrão
+INSERT INTO configuracoes (chave, valor, tipo, descricao) VALUES
+('nome_clinica', 'Clínica Exemplo', 'string', 'Nome da clínica'),
+('telefone_clinica', '', 'string', 'Telefone da clínica'),
+('backup_automatico', 'true', 'boolean', 'Ativar backup automático'),
+('backup_hora', '23:00', 'string', 'Horário do backup automático'),
+('dias_retencao_backup', '7', 'integer', 'Dias de retenção de backups');
+
+-- ============================================
+-- RELATÓRIOS E ESTATÍSTICAS
+-- ============================================
+
+CREATE TABLE relatorios_diarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    data DATE UNIQUE NOT NULL,
+    total_pacientes INTEGER DEFAULT 0,
+    confirmados INTEGER DEFAULT 0,
+    aguardando_resposta INTEGER DEFAULT 0,
+    reagendados INTEGER DEFAULT 0,
+    sem_resposta INTEGER DEFAULT 0,
+    cancelados INTEGER DEFAULT 0,
+    taxa_confirmacao REAL,
+    gerado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============================================
+-- TERMOS LGPD
+-- ============================================
+
+CREATE TABLE termos_lgpd (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    versao TEXT UNIQUE NOT NULL,
+    texto_completo TEXT NOT NULL,
+    data_vigencia DATE NOT NULL,
+    ativo BOOLEAN DEFAULT 1,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Termo inicial
+INSERT INTO termos_lgpd (versao, texto_completo, data_vigencia) VALUES
+('1.0', 'Termo de Consentimento para Tratamento de Dados Pessoais...', date('now'));
+```
+
+---
+
+## 5. Sistema de Autenticação
+
+### 5.1 backend/auth.py
+
+```python
+import bcrypt
+import secrets
+import sqlite3
+from datetime import datetime, timedelta
+from typing import Optional, Dict
+import socket
+
+class AuthManager:
+    def __init__(self, db_path: str):
+        self.db_path = db_path
+    
+    def _get_connection(self):
+        return sqlite3.connect(self.db_path)
+    
+    def hash_password(self, password: str) -> str:
+        """Gera hash seguro da senha"""
+        salt = bcrypt.gensalt()
+        return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
+    
+    def verify_password(self, password: str, hashed: str) -> bool:
+        """Verifica se senha corresponde ao hash"""
+        return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+    
+    def criar_usuario(self, username: str, password: str, nome_completo: str,
+                     email: str, perfil: str, criado_por: int) -> Dict:
+        """Cria novo usuário no sistema"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            senha_hash = self.hash_password(password)
+            
+            cursor.execute("""
+                INSERT INTO usuarios (username, senha_hash, nome_completo, 
+                                    email, perfil, criado_por)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (username, senha_hash, nome_completo, email, perfil, criado_por))
+            
+            conn.commit()
+            user_id = cursor.lastrowid
+            
+            return {
+                'success': True,
+                'user_id': user_id,
+                'message': 'Usuário criado com sucesso'
+            }
+        except sqlite3.IntegrityError:
+            return {
+                'success': False,
+                'message': 'Usuário ou email já existe'
+            }
+        finally:
+            conn.close()
+    
+    def login(self, username: str, password: str) -> Dict:
+        """Autentica usuário e cria sessão"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Buscar usuário
+            cursor.execute("""
+                SELECT id, senha_hash, nome_completo, perfil, ativo
+                FROM pacientes
+            WHERE data_consentimento BETWEEN ? AND ?
+            GROUP BY forma_consentimento
+        """, (data_inicio, data_fim))
+        
+        resultados = cursor.fetchall()
+        conn.close()
+        
+        return {
+            'total': resultados[0][0] if resultados else 0,
+            'com_consentimento': resultados[0][1] if resultados else 0,
+            'sem_consentimento': resultados[0][2] if resultados else 0,
+            'por_forma': [(r[3], r[4]) for r in resultados if r[3]]
+        }
+    
+    def _log_auditoria(self, usuario_id, acao, tabela, registro_id, dados):
+        """Registra ação no log de auditoria"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO log_auditoria (usuario_id, acao, tabela, registro_id, dados_novos)
+            VALUES (?, ?, ?, ?, ?)
+        """, (usuario_id, acao, tabela, registro_id, dados))
+        
+        conn.commit()
+        conn.close()
+```
+
+### 6.3 backend/limits.py (Completo)
+
+```python
+import sqlite3
+from datetime import datetime, date, timedelta
+from typing import Dict, Tuple
+
+class LimitsController:
+    def __init__(self, db_path: str):
+        self.db_path = db_path
+    
+    def _get_connection(self):
+        return sqlite3.connect(self.db_path)
+    
+    def verificar_limite_diario(self, tipo_mensagem: str = 'primeiro_contato') -> Tuple[bool, str]:
+        """Verifica se limite diário foi atingido"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        # Obter limite configurado
+        cursor.execute("""
+            SELECT valor_limite FROM limites_sistema
+            WHERE tipo_limite = 'max_primeiros_contatos_dia'
+        """)
+        
+        limite_maximo = cursor.fetchone()[0]
+        
+        # Contar envios de hoje
+        hoje = date.today().isoformat()
+        cursor.execute("""
+            SELECT COALESCE(SUM(total_enviado), 0)
+            FROM controle_envio
+            WHERE data = ? AND tipo_mensagem = ?
+        """, (hoje, tipo_mensagem))
+        
+        total_hoje = cursor.fetchone()[0]
+        conn.close()
+        
+        if total_hoje >= limite_maximo:
+            return False, f'Limite diário atingido ({total_hoje}/{limite_maximo}). Aguarde até amanhã.'
+        
+        restantes = limite_maximo - total_hoje
+        return True, f'{restantes} envios restantes hoje'
+    
+    def verificar_limite_por_numero(self, telefone: str) -> Tuple[bool, str]:
+        """Verifica quantas vezes um número já foi contatado hoje"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        hoje = date.today().isoformat()
+        
+        cursor.execute("""
+            SELECT total_enviado, ultimo_envio
+            FROM controle_envio
+            WHERE data = ? AND numero_telefone = ?
+        """, (hoje, telefone))
+        
+        result = cursor.fetchone()
+        
+        # Obter limite de tentativas
+        cursor.execute("""
+            SELECT valor_limite FROM limites_sistema
+            WHERE tipo_limite = 'max_tentativas_paciente'
+        """)
+        
+        max_tentativas = cursor.fetchone()[0]
+        conn.close()
+        
+        if result:
+            total_enviado, ultimo_envio = result
+            
+            if total_enviado >= max_tentativas:
+                return False, f'Número já contatado {total_enviado} vezes hoje. Limite: {max_tentativas}'
+            
+            # Verificar intervalo mínimo
+            if ultimo_envio:
+                ultimo = datetime.fromisoformat(ultimo_envio)
+                intervalo = (datetime.now() - ultimo).total_seconds()
+                
+                if intervalo < 120:  # 2 minutos
+                    return False, f'Aguarde {int(120 - intervalo)} segundos para contatar este número novamente'
+        
+        return True, 'Pode enviar'
+    
+    def registrar_envio(self, telefone: str, tipo_mensagem: str, usuario_id: int) -> Dict:
+        """Registra envio no controle de limites"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        hoje = date.today().isoformat()
+        agora = datetime.now().isoformat()
+        
+        try:
+            # Verificar se já existe registro hoje para este número
+            cursor.execute("""
+                SELECT id, total_enviado FROM controle_envio
+                WHERE data = ? AND numero_telefone = ?
+            """, (hoje, telefone))
+            
+            result = cursor.fetchone()
+            
+            if result:
+                # Atualizar contador
+                registro_id, total = result
+                cursor.execute("""
+                    UPDATE controle_envio
+                    SET total_enviado = ?,
+                        ultimo_envio = ?,
+                        usuario_id = ?
+                    WHERE id = ?
+                """, (total + 1, agora, usuario_id, registro_id))
+            else:
+                # Criar novo registro
+                cursor.execute("""
+                    INSERT INTO controle_envio 
+                    (data, numero_telefone, tipo_mensagem, total_enviado, ultimo_envio, usuario_id)
+                    VALUES (?, ?, ?, 1, ?, ?)
+                """, (hoje, telefone, tipo_mensagem, agora, usuario_id))
+            
+            conn.commit()
+            
+            return {'success': True, 'message': 'Envio registrado'}
+        
+        except Exception as e:
+            return {'success': False, 'message': f'Erro ao registrar: {str(e)}'}
+        finally:
+            conn.close()
+    
+    def obter_estatisticas_dia(self) -> Dict:
+        """Retorna estatísticas de envios do dia"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        hoje = date.today().isoformat()
+        
+        cursor.execute("""
+            SELECT 
+                tipo_mensagem,
+                SUM(total_enviado) as total,
+                COUNT(DISTINCT numero_telefone) as numeros_unicos
+            FROM controle_envio
+            WHERE data = ?
+            GROUP BY tipo_mensagem
+        """, (hoje,))
+        
+        resultados = cursor.fetchall()
+        conn.close()
+        
+        stats = {
+            'data': hoje,
+            'por_tipo': {}
+        }
+        
+        for tipo, total, unicos in resultados:
+            stats['por_tipo'][tipo] = {
+                'total_envios': total,
+                'numeros_unicos': unicos
+            }
+        
+        return stats
+```
+
+### 6.4 backend/messaging.py (Sistema de Mensagens)
+
+```python
+import sqlite3
+import random
+from datetime import datetime
+from typing import Optional, Dict
+
+class MessageManager:
+    def __init__(self, db_path: str):
+        self.db_path = db_path
+        self.ultimas_mensagens = {}  # Cache para evitar repetição
+    
+    def _get_connection(self):
+        return sqlite3.connect(self.db_path)
+    
+    def gerar_mensagem(self, tipo: str, paciente_data: Dict) -> str:
+        """
+        Gera mensagem personalizada e humanizada
+        
+        Args:
+            tipo: 'primeiro_contato', 'confirmacao', 'lembrete', 'reagendamento'
+            paciente_data: Dicionário com dados do paciente
+        
+        Returns:
+            Texto da mensagem personalizada
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        # Buscar mensagens do tipo solicitado
+        cursor.execute("""
+            SELECT id, texto FROM mensagens
+            WHERE tipo = ? AND ativo = 1
+        """, (tipo,))
+        
+        mensagens_disponiveis = cursor.fetchall()
+        conn.close()
+        
+        if not mensagens_disponiveis:
+            return self._mensagem_fallback(tipo, paciente_data)
+        
+        # Filtrar mensagens já usadas recentemente
+        paciente_id = paciente_data.get('id')
+        mensagens_usadas = self.ultimas_mensagens.get(paciente_id, set())
+        
+        mensagens_filtradas = [
+            (mid, texto) for mid, texto in mensagens_disponiveis
+            if mid not in mensagens_usadas
+        ]
+        
+        # Se todas já foram usadas, limpar histórico
+        if not mensagens_filtradas:
+            mensagens_filtradas = mensagens_disponiveis
+            self.ultimas_mensagens[paciente_id] = set()
+        
+        # Selecionar aleatoriamente
+        msg_id, texto = random.choice(mensagens_filtradas)
+        
+        # Registrar uso
+        if paciente_id:
+            if paciente_id not in self.ultimas_mensagens:
+                self.ultimas_mensagens[paciente_id] = set()
+            self.ultimas_mensagens[paciente_id].add(msg_id)
+        
+        # Personalizar mensagem
+        mensagem_final = self._personalizar_mensagem(texto, paciente_data)
+        
+        return mensagem_final
+    
+    def _personalizar_mensagem(self, texto: str, dados: Dict) -> str:
+        """Substitui variáveis na mensagem"""
+        # Formatar data
+        if dados.get('data_consulta'):
+            data_obj = datetime.fromisoformat(dados['data_consulta'])
+            data_formatada = data_obj.strftime('%d/%m/%Y')
+            dia_semana = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'][data_obj.weekday()]
+            texto = texto.replace('{data}', data_formatada)
+            texto = texto.replace('{dia_semana}', dia_semana)
+        
+        # Formatar hora
+        if dados.get('hora_consulta'):
+            texto = texto.replace('{hora}', dados['hora_consulta'][:5])
+        
+        # Nome (usar apenas primeiro nome para ser mais pessoal)
+        if dados.get('nome'):
+            primeiro_nome = dados['nome'].split()[0]
+            texto = texto.replace('{nome}', primeiro_nome)
+        
+        # Tipo de consulta/exame
+        if dados.get('tipo_consulta'):
+            texto = texto.replace('{tipo}', dados['tipo_consulta'])
+        
+        # Profissional
+        if dados.get('profissional'):
+            texto = texto.replace('{profissional}', dados['profissional'])
+        
+        return texto.strip()
+    
+    def _mensagem_fallback(self, tipo: str, dados: Dict) -> str:
+        """Mensagem de emergência caso banco esteja vazio"""
+        templates = {
+            'primeiro_contato': f"Olá! Aqui é da clínica. Sua consulta está agendada para {dados.get('data_consulta', 'data')} às {dados.get('hora_consulta', 'hora')}. Tudo certo?",
+            'confirmacao': f"Oi! Confirmando sua consulta para {dados.get('data_consulta', 'data')} às {dados.get('hora_consulta', 'hora')}. Pode confirmar?",
+            'lembrete': f"Lembrete: sua consulta é amanhã, {dados.get('data_consulta', 'data')} às {dados.get('hora_consulta', 'hora')}. Nos vemos lá!",
+            'reagendamento': "Entendi que precisa reagendar. Qual data seria melhor para você?"
+        }
+        
+        return templates.get(tipo, "Olá! Entrando em contato da clínica.")
+    
+    def preparar_mensagem_paciente(self, paciente_id: int, tipo_mensagem: str) -> Dict:
+        """Prepara mensagem para um paciente específico"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        # Buscar dados do paciente
+        cursor.execute("""
+            SELECT id, nome, telefone, data_consulta, hora_consulta,
+                   tipo_consulta, profissional, status
+            FROM pacientes
+            WHERE id = ?
+        """, (paciente_id,))
+        
+        paciente = cursor.fetchone()
+        
+        if not paciente:
+            conn.close()
+            return {'success': False, 'message': 'Paciente não encontrado'}
+        
+        paciente_data = {
+            'id': paciente[0],
+            'nome': paciente[1],
+            'telefone': paciente[2],
+            'data_consulta': paciente[3],
+            'hora_consulta': paciente[4],
+            'tipo_consulta': paciente[5],
+            'profissional': paciente[6],
+            'status': paciente[7]
+        }
+        
+        # Gerar mensagem
+        mensagem = self.gerar_mensagem(tipo_mensagem, paciente_data)
+        
+        # Salvar mensagem preparada
+        agora = datetime.now().isoformat()
+        
+        cursor.execute("""
+            UPDATE pacientes
+            SET mensagem_preparada = ?,
+                fase_conversa = ?,
+                data_preparo = ?,
+                status = 'mensagem_preparada'
+            WHERE id = ?
+        """, (mensagem, tipo_mensagem, agora, paciente_id))
+        
+        conn.commit()
+        conn.close()
+        
+        return {
+            'success': True,
+            'mensagem': mensagem,
+            'paciente': paciente_data
+        }
+```
+
+---
+
+## 7. Frontend Tkinter
+
+### 7.1 frontend/login_window.py
+
+```python
+import tkinter as tk
+from tkinter import ttk, messagebox
+from backend.auth import AuthManager
+
+class LoginWindow:
+    def __init__(self, db_path: str, on_success_callback):
+        self.db_path = db_path
+        self.on_success = on_success_callback
+        self.auth_manager = AuthManager(db_path)
+        
+        self.window = tk.Tk()
+        self.window.title("Titanium Clínica - Login")
+        self.window.geometry("400x300")
+        self.window.resizable(False, False)
+        
+        self._criar_interface()
+        self._centralizar_janela()
+    
+    def _criar_interface(self):
+        # Frame principal
+        main_frame = ttk.Frame(self.window, padding="40")
+        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Logo/Título
+        ttk.Label(
+            main_frame,
+            text="🦷 Titanium Clínica",
+            font=('Arial', 18, 'bold')
+        ).grid(row=0, column=0, columnspan=2, pady=(0, 30))
+        
+        # Usuário
+        ttk.Label(main_frame, text="Usuário:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        self.username_entry = ttk.Entry(main_frame, width=30)
+        self.username_entry.grid(row=1, column=1, pady=5)
+        
+        # Senha
+        ttk.Label(main_frame, text="Senha:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        self.password_entry = ttk.Entry(main_frame, width=30, show="●")
+        self.password_entry.grid(row=2, column=1, pady=5)
+        
+        # Botão Login
+        ttk.Button(
+            main_frame,
+            text="Entrar",
+            command=self._fazer_login
+        ).grid(row=3, column=0, columnspan=2, pady=20)
+        
+        # Bind Enter
+        self.password_entry.bind('<Return>', lambda e: self._fazer_login())
+        
+        # Focar no campo usuário
+        self.username_entry.focus()
+    
+    def _fazer_login(self):
+        username = self.username_entry.get().strip()
+        password = self.password_entry.get()
+        
+        if not username or not password:
+            messagebox.showwarning("Atenção", "Preencha usuário e senha")
+            return
+        
+        # Autenticar
+        result = self.auth_manager.login(username, password)
+        
+        if result['success']:
+            self.window.destroy()
+            self.on_success(result)
+        else:
+            messagebox.showerror("Erro", result['message'])
+            self.password_entry.delete(0, tk.END)
+            self.password_entry.focus()
+    
+    def _centralizar_janela(self):
+        self.window.update_idletasks()
+        width = self.window.winfo_width()
+        height = self.window.winfo_height()
+        x = (self.window.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.window.winfo_screenheight() // 2) - (height // 2)
+        self.window.geometry(f'{width}x{height}+{x}+{y}')
+    
+    def run(self):
+        self.window.mainloop()
+```
+
+### 7.2 frontend/main_window.py
+
+```python
+import tkinter as tk
+from tkinter import ttk, messagebox
+from frontend.patient_view import PatientView
+from frontend.message_preview import MessagePreview
+from frontend.dashboard import Dashboard
+from backend.auth import AuthManager
+
+class MainWindow:
+    def __init__(self, user_session: dict, db_path: str):
+        self.user_session = user_session
+        self.db_path = db_path
+        self.auth_manager = AuthManager(db_path)
+        
+        self.window = tk.Tk()
+        self.window.title(f"Titanium Clínica - {user_session['nome']} ({user_session['perfil']})")
+        self.window.geometry("1200x700")
+        
+        self._criar_menu()
+        self._criar_interface()
+    
+    def _criar_menu(self):
+        menubar = tk.Menu(self.window)
+        self.window.config(menu=menubar)
+        
+        # Menu Arquivo
+        menu_arquivo = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Arquivo", menu=menu_arquivo)
+        menu_arquivo.add_command(label="Configurações", command=self._abrir_configuracoes)
+        menu_arquivo.add_separator()
+        menu_arquivo.add_command(label="Sair", command=self._fazer_logout)
+        
+        # Menu Pacientes
+        menu_pacientes = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Pacientes", menu=menu_pacientes)
+        menu_pacientes.add_command(label="Novo Paciente", command=self._novo_paciente)
+        menu_pacientes.add_command(label="Importar Planilha", command=self._importar_planilha)
+        
+        # Menu Relatórios (apenas gestor/admin)
+        if self.user_session['perfil'] in ['admin', 'gestor']:
+            menu_relatorios = tk.Menu(menubar, tearoff=0)
+            menubar.add_cascade(label="Relatórios", menu=menu_relatorios)
+            menu_relatorios.add_command(label="Dashboard", command=self._abrir_dashboard)
+            menu_relatorios.add_command(label="Gerar Relatório", command=self._gerar_relatorio)
+        
+        # Menu Ajuda
+        menu_ajuda = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Ajuda", menu=menu_ajuda)
+        menu_ajuda.add_command(label="Manual do Usuário", command=self._abrir_manual)
+        menu_ajuda.add_command(label="Sobre", command=self._sobre)
+    
+    def _criar_interface(self):
+        # Notebook (abas)
+        self.notebook = ttk.Notebook(self.window)
+        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Aba Pacientes
+        self.patient_view = PatientView(
+            self.notebook,
+            self.db_path,
+            self.user_session,
+            on_preparar_mensagem=self._preparar_mensagem
+        )
+        self.notebook.add(self.patient_view.frame, text="📋 Pacientes")
+        
+        # Aba Dashboard (se tiver permissão)
+        if self.user_session['perfil'] in ['admin', 'gestor']:
+            self.dashboard = Dashboard(self.notebook, self.db_path)
+            self.notebook.add(self.dashboard.frame, text="📊 Dashboard")
+    
+    def _preparar_mensagem(self, paciente_id: int):
+        """Abre janela de preview da mensagem"""
+        MessagePreview(
+            self.window,
+            self.db_path,
+            paciente_id,
+            self.user_session,
+            on_enviado=self.patient_view.atualizar_lista
+        )
+    
+    def _fazer_logout(self):
+        if messagebox.askyesno("Sair", "Deseja realmente sair do sistema?"):
+            self.auth_manager.logout(self.user_session['token'])
+            self.window.destroy()
+    
+    def _novo_paciente(self):
+        messagebox.showinfo("Em Desenvolvimento", "Funcionalidade em desenvolvimento")
+    
+    def _importar_planilha(self):
+        messagebox.showinfo("Em Desenvolvimento", "Funcionalidade em desenvolvimento")
+    
+    def _abrir_dashboard(self):
+        self.notebook.select(1)
+    
+    def _gerar_relatorio(self):
+        messagebox.showinfo("Em Desenvolvimento", "Funcionalidade em desenvolvimento")
+    
+    def _abrir_configuracoes(self):
+        messagebox.showinfo("Em Desenvolvimento", "Funcionalidade em desenvolvimento")
+    
+    def _abrir_manual(self):
+        messagebox.showinfo("Manual", "Manual disponível em docs/manual_usuario.md")
+    
+    def _sobre(self):
+        messagebox.showinfo(
+            "Sobre",
+            "Titanium Clínica v2.0\n"
+            "Sistema de Confirmação Humanizada\n\n"
+            "© 2025 - Todos os direitos reservados"
+        )
+    
+    def run(self):
+        self.window.protocol("WM_DELETE_WINDOW", self._fazer_logout)
+        self.window.mainloop()
+```
+
+### 7.3 frontend/message_preview.py (CORE - Preparar e Enviar)
+
+```python
+import tkinter as tk
+from tkinter import ttk, messagebox
+from backend.messaging import MessageManager
+from backend.limits import LimitsController
+from backend.security import SecurityValidator
+from automation.whatsapp import WhatsAppAutomation
+import sqlite3
+
+class MessagePreview:
+    def __init__(self, parent, db_path: str, paciente_id: int, user_session: dict, on_enviado):
+        self.db_path = db_path
+        self.paciente_id = paciente_id
+        self.user_session = user_session
+        self.on_enviado = on_enviado
+        
+        self.msg_manager = MessageManager(db_path)
+        self.limits = LimitsController(db_path)
+        self.security = SecurityValidator(db_path)
+        self.whatsapp = WhatsAppAutomation()
+        
+        # Janela modal
+        self.window = tk.Toplevel(parent)
+        self.window.title("Preparar Mensagem")
+        self.window.geometry("600x500")
+        self.window.resizable(False, False)
+        self.window.grab_set()  # Modal
+        
+        self._carregar_dados_paciente()
+        self._criar_interface()
+        self._centralizar()
+    
+    def _carregar_dados_paciente(self):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT nome, telefone, data_consulta, hora_consulta,
+                   tipo_consulta, status, mensagem_preparada,
+                   consentimento_whatsapp
+            FROM pacientes
+            WHERE id = ?
+        """, (self.paciente_id,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if not result:
+            messagebox.showerror("Erro", "Paciente não encontrado")
+            self.window.destroy()
+            return
+        
+        self.paciente = {
+            'nome': result[0],
+            'telefone': result[1],
+            'data_consulta': result[2],
+            'hora_consulta': result[3],
+            'tipo_consulta': result[4],
+            'status': result[5],
+            'mensagem_preparada': result[6],
+            'consentimento': result[7]
+        }
+    
+    def _criar_interface(self):
+        main_frame = ttk.Frame(self.window, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Dados do Paciente
+        info_frame = ttk.LabelFrame(main_frame, text="Dados do Paciente", padding="10")
+        info_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Label(info_frame, text=f"Nome: {self.paciente['nome']}").pack(anchor=tk.W)
+        ttk.Label(info_frame, text=f"Telefone: {self.paciente['telefone']}").pack(anchor=tk.W)
+        ttk.Label(info_frame, text=f"Data: {self.paciente['data_consulta']} às {self.paciente['hora_consulta']}").pack(anchor=tk.W)
+        
+        # Verificar consentimento
+        if not self.paciente['consentimento']:
+            ttk.Label(
+                info_frame,
+                text="⚠️  ATENÇÃO: Paciente sem consentimento LGPD",
+                foreground="red"
+            ).pack(anchor=tk.W, pady=5)
+        
+        # Mensagem
+        msg_frame = ttk.LabelFrame(main_frame, text="Mensagem", padding="10")
+        msg_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        self.text_mensagem = tk.Text(msg_frame, height=10, wrap=tk.WORD)
+        self.text_mensagem.pack(fill=tk.BOTH, expand=True)
+        
+        # Se já tem mensagem preparada, exibir
+        if self.paciente['mensagem_preparada']:
+            self.text_mensagem.insert(1.0, self.paciente['mensagem_preparada'])
+            self.text_mensagem.config(state=tk.DISABLED)
+        
+        # Botões
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        if self.paciente['mensagem_preparada']:
+            # Mensagem já preparada - mostrar botão de enviar
+            ttk.Button(
+                btn_frame,
+                text="📱 Enviar via WhatsApp",
+                command=self._enviar_whatsapp
+            ).pack(side=tk.LEFT, padx=5)
+            
+            ttk.Button(
+                btn_frame,
+                text="🔄 Gerar Nova Mensagem",
+                command=self._gerar_nova_mensagem
+            ).pack(side=tk.LEFT, padx=5)
+        else:
+            # Preparar nova mensagem
+            ttk.Button(
+                btn_frame,
+                text="✨ Preparar Mensagem",
+                command=self._preparar_mensagem
+            ).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(
+            btn_frame,
+            text="Cancelar",
+            command=self.window.destroy
+        ).pack(side=tk.RIGHT, padx=5)
+    
+    def _preparar_mensagem(self):
+        # Verificar consentimento
+        if not self.paciente['consentimento']:
+            if not messagebox.askyesno(
+                "Consentimento LGPD",
+                "Paciente não possui consentimento registrado.\n\n"
+                "Você obteve consentimento verbal/escrito do paciente "
+                "para envio de mensagens via WhatsApp?"
+            ):
+                return
+            
+            # Registrar consentimento
+            self._registrar_consentimento_manual()
+        
+        # Verificar limites
+        pode_enviar, msg_limite = self.limits.verificar_limite_diario()
+        if not pode_enviar:
+            messagebox.showwarning("Limite Atingido", msg_limite)
+            return
+        
+        pode_enviar, msg_numero = self.limits.verificar_limite_por_numero(self.paciente['telefone'])
+        if not pode_enviar:
+            messagebox.showwarning("Limite Atingido", msg_numero)
+            return
+        
+        # Verificar horário
+        pode_enviar, msg_horario = self.security.verificar_horario_permitido()
+        if not pode_enviar:
+            messagebox.showwarning("Horário Inválido", msg_horario)
+            return
+        
+        # Determinar tipo de mensagem baseado no status
+        tipo_msg = self._determinar_tipo_mensagem()
+        
+        # Gerar mensagem
+        result = self.msg_manager.preparar_mensagem_paciente(self.paciente_id, tipo_msg)
+        
+        if result['success']:
+            self.text_mensagem.config(state=tk.NORMAL)
+            self.text_mensagem.delete(1.0, tk.END)
+            self.text_mensagem.insert(1.0, result['mensagem'])
+            
+            messagebox.showinfo(
+                "Sucesso",
+                "Mensagem preparada com sucesso!\n\n"
+                "Revise o texto e clique em 'Enviar via WhatsApp' "
+                "para colar no WhatsApp Web."
+            )
+            
+            # Atualizar interface
+            self.window.destroy()
+            if self.on_enviado:
+                self.on_enviado()
+        else:
+            messagebox.showerror("Erro", result['message'])
+    
+    def _enviar_whatsapp(self):
+        mensagem = self.text_mensagem.get(1.0, tk.END).strip()
+        
+        if not mensagem:
+            messagebox.showwarning("Atenção", "Mensagem vazia")
+            return
+        
+        # Confirmar ação
+        if not messagebox.askyesno(
+            "Confirmar Envio",
+            f"A mensagem será colada no WhatsApp Web.\n\n"
+            f"Você precisará:\n"
+            f"1. Revisar o texto\n"
+            f"2. Pressionar ENTER manualmente\n\n"
+            f"Deseja continuar?"
+        ):
+            return
+        
+        try:
+            # Abrir WhatsApp e colar mensagem
+            sucesso = self.whatsapp.colar_mensagem(
+                self.paciente['telefone'],
+                mensagem
+            )
+            
+            if sucesso:
+                # Atualizar status para "mensagem_enviada"
+                self._atualizar_status_enviado()
+                
+                # Registrar no controle de limites
+                self.limits.registrar_envio(
+                    self.paciente['telefone'],
+                    self._determinar_tipo_mensagem(),
+                    self.user_session['user_id']
+                )
+                
+                messagebox.showinfo(
+                    "Sucesso",
+                    "Mensagem colada no WhatsApp Web!\n\n"
+                    "⚠️ IMPORTANTE: Revise o texto e pressione ENTER para enviar."
+                )
+                
+                self.window.destroy()
+                if self.on_enviado:
+                    self.on_enviado()
+            else:
+                messagebox.showerror(
+                    "Erro",
+                    "Não foi possível abrir o WhatsApp Web.\n\n"
+                    "Verifique se está logado no navegador."
+                )
+        
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao processar: {str(e)}")
+    
+    def _determinar_tipo_mensagem(self) -> str:
+        """Determina tipo de mensagem baseado no status atual"""
+        status = self.paciente['status']
+        
+        if status == 'pendente':
+            return 'primeiro_contato'
+        elif status in ['mensagem_preparada', 'mensagem_enviada']:
+            return 'confirmacao'
+        elif status == 'sem_resposta':
+            return 'follow_up'
+        
+        return 'confirmacao'
+    
+    def _gerar_nova_mensagem(self):
+        """Permite gerar uma nova variação da mensagem"""
+        self.text_mensagem.config(state=tk.NORMAL)
+        self._preparar_mensagem()
+    
+    def _registrar_consentimento_manual(self):
+        """Registra consentimento obtido manualmente"""
+        from backend.lgpd import LGPDManager
+        
+        lgpd = LGPDManager(self.db_path)
+        lgpd.registrar_consentimento(
+            self.paciente_id,
+            'verbal',
+            self.user_session['user_id'],
+            'Consentimento obtido durante preparação de mensagem'
+        )
+    
+    def _atualizar_status_enviado(self):
+        """Atualiza status do paciente após envio"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        from datetime import datetime
+        
+        cursor.execute("""
+            UPDATE pacientes
+            SET status = 'mensagem_enviada',
+                data_envio = ?,
+                tentativas_contato = tentativas_contato + 1,
+                ultima_tentativa = ?
+            WHERE id = ?
+        """, (datetime.now(), datetime.now(), self.paciente_id))
+        
+        # Registrar no histórico
+        cursor.execute("""
+            INSERT INTO historico_mensagens 
+            (paciente_id, mensagem_texto, tipo_mensagem, data_envio, 
+             enviado_por, status_envio)
+            VALUES (?, ?, ?, ?, ?, 'enviada')
+        """, (
+            self.paciente_id,
+            self.text_mensagem.get(1.0, tk.END).strip(),
+            self._determinar_tipo_mensagem(),
+            datetime.now(),
+            self.user_session['user_id']
+        ))
+        
+        conn.commit()
+        conn.close()
+    
+    def _centralizar(self):
+        self.window.update_idletasks()
+        width = self.window.winfo_width()
+        height = self.window.winfo_height()
+        x = (self.window.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.window.winfo_screenheight() // 2) - (height // 2)
+        self.window.geometry(f'{width}x{height}+{x}+{y}')
+```
+
+---
+
+## 8. Automação WhatsApp
+
+### 8.1 automation/whatsapp.py (CRÍTICO - NUNCA ENVIA AUTOMÁTICO)
+
+```python
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.service import Service
+import time
+import urllib.parse
+
+class WhatsAppAutomation:
+    def __init__(self):
+        self.driver = None
+    
+    def _iniciar_driver(self):
+        """Inicializa driver do Chrome em modo headless"""
+        if self.driver:
+            return
+        
+        chrome_options = Options()
+        chrome_options.add_argument("--user-data-dir=./User_Data")  # Manter sessão
+        chrome_options.add_argument("--profile-directory=Default")
+        # chrome_options.add_argument("--headless")  # Descomente para modo invisível
+        
+        service = Service(ChromeDriverManager().install())
+        self.driver = webdriver.Chrome(service=service, options=chrome_options)
+    
+    def colar_mensagem(self, telefone: str, mensagem: str) -> bool:
+        """
+        Abre WhatsApp Web e cola mensagem (NÃO ENVIA)
+        
+        ⚠️ IMPORTANTE: Esta função APENAS cola o texto.
+        O atendente DEVE pressionar ENTER manualmente.
+        
+        Args:
+            telefone: Número no formato +5511999999999
+            mensagem: Texto da mensagem
+        
+        Returns:
+            bool: True se conseguiu colar, False caso contrário
+        """
+        try:
+            self._iniciar_driver()
+            
+            # Formatar número
+            numero_limpo = telefone.replace('+', '').replace(' ', '')
+            
+            # Abrir chat direto via URL
+            url = f"https://web.whatsapp.com/send?phone={numero_limpo}&text={urllib.parse.quote(mensagem)}"
+            
+            self.driver.get(url)
+            
+            # Aguardar carregamento
+            time.sleep(3)
+            
+            # Aguardar campo de mensagem estar disponível
+            wait = WebDriverWait(self.driver, 30)
+            
+            # Tentar localizar campo de texto (pode variar com atualizações do WhatsApp)
+            try:
+                campo_mensagem = wait.until(
+                    EC.presence_of_element_located((By.XPATH, '//div[@contenteditable="true"][@data-tab="10"]'))
+                )
+            except:
+                try:
+                    campo_mensagem = wait.until(
+                        EC.presence_of_element_located((By.XPATH, '//div[@contenteditable="true"]'))
+                    )
+                except:
+                    return False
+            
+            # Garantir que o campo está focado
+            campo_mensagem.click()
+            time.sleep(0.5)
+            
+            # A mensagem JÁ está no campo através da URL
+            # NÃO fazemos mais nada
+            # O atendente DEVE revisar e pressionar ENTER
+            
+            return True
+        
+        except Exception as e:
+            print(f"Erro ao colar mensagem: {str(e)}")
+            return False
+    
+    def verificar_whatsapp_ativo(self, telefone: str) -> bool:
+        """
+        Verifica se número tem WhatsApp ativo
+        
+        NOTA: Esta função é experimental e pode não funcionar sempre
+        """
+        try:
+            self._iniciar_driver()
+            
+            numero_limpo = telefone.replace('+', '').replace(' ', '')
+            url = f"https://web.whatsapp.com/send?phone={numero_limpo}"
+            
+            self.driver.get(url)
+            time.sleep(5)
+            
+            # Verificar se apareceu mensagem de número inválido
+            try:
+                erro = self.driver.find_element(By.XPATH, '//*[contains(text(), "número de telefone")]')
+                return False
+            except:
+                return True
+        
+        except:
+            return True  # Assumir que tem WhatsApp em caso de erro
+    
+    def fechar(self):
+        """Fecha o navegador"""
+        if self.driver:
+            self.driver.quit()
+            self.driver = None
+    
+    def __del__(self):
+        self.fechar()
+```
+
+---
+
+## 9. Dashboard com Gráficos
+
+### 9.1 frontend/dashboard.py
+
+```python
+import tkinter as tk
+from tkinter import ttk
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
+import sqlite3
+from datetime import date, timedelta
+
+class Dashboard:
+    def __init__(self, parent, db_path: str):
+        self.db_path = db_path
+        
+        self.frame = ttk.Frame(parent)
+        self._criar_interface()
+        self._atualizar_dados()
+    
+    def _criar_interface(self):
+        # Frame de cards (KPIs)
+        cards_frame = ttk.Frame(self.frame)
+        cards_frame.pack(fill=tk.X, padx=20, pady=20)
+        
+        self.cards = {}
+        metricas = [
+            ('total', 'Total Pacientes', '#3498db'),
+            ('confirmados', 'Confirmados', '#2ecc71'),
+            ('aguardando', 'Aguardando', '#f39c12'),
+            ('sem_resposta', 'Sem Resposta', '#e74c3c')
+        ]
+        
+        for i, (key, label, cor) in enumerate(metricas):
+            card = self._criar_card(cards_frame, label, "0", cor)
+            card.grid(row=0, column=i, padx=10, sticky=(tk.W, tk.E))
+            self.cards[key] = card
+        
+        cards_frame.columnconfigure(0, weight=1)
+        cards_frame.columnconfigure(1, weight=1)
+        cards_frame.columnconfigure(2, weight=1)
+        cards_frame.columnconfigure(3, weight=1)
+        
+        # Frame de gráficos
+        graficos_frame = ttk.Frame(self.frame)
+        graficos_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 20))
+        
+        # Gráfico de Pizza
+        self.fig_pizza = Figure(figsize=(5, 4), dpi=100)
+        self.ax_pizza = self.fig_pizza.add_subplot(111)
+        self.canvas_pizza = FigureCanvasTkAgg(self.fig_pizza, graficos_frame)
+        self.canvas_pizza.get_tk_widget().pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
+        
+        # Gráfico de Barras (últimos 7 dias)
+        self.fig_barras = Figure(figsize=(5, 4), dpi=100)
+        self.ax_barras = self.fig_barras.add_subplot(111)
+        self.canvas_barras = FigureCanvasTkAgg(self.fig_barras, graficos_frame)
+        self.canvas_barras.get_tk_widget().pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # Botão Atualizar
+        ttk.Button(
+            self.frame,
+            text="🔄 Atualizar Dados",
+            command=self._atualizar_dados
+        ).pack(pady=10)
+    
+    def _criar_card(self, parent, titulo, valor, cor):
+        card_frame = ttk.Frame(parent, relief=tk.RAISED, borderwidth=2)
+        
+        ttk.Label(
+            card_frame,
+            text=titulo,
+            font=('Arial', 10)
+        ).pack(pady=(10, 5))
+        
+        valor_label = ttk.Label(
+            card_frame,
+            text=valor,
+            font=('Arial', 24, 'bold'),
+            foreground=cor
+        )
+        valor_label.pack(pady=(0, 10))
+        
+        card_frame.valor_label = valor_label
+        return card_frame
+    
+    def _atualizar_dados(self):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        hoje = date.today().isoformat()
+        
+        # KPIs do dia
+        cursor.execute("""
+            SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN status = 'confirmado' THEN 1 ELSE 0 END) as confirmados,
+                SUM(CASE WHEN status IN ('mensagem_preparada', 'mensagem_enviada') THEN 1 ELSE 0 END) as aguardando,
+                SUM(CASE WHEN status = 'sem_resposta' THEN 1 ELSE 0 END) as sem_resposta
+            FROM pacientes
+            WHERE data_consulta = ?
+        """, (hoje,))
+        
+        result = cursor.fetchone()
+        
+        # Atualizar cards
+        self.cards['total'].valor_label.config(text=str(result[0]))
+        self.cards['confirmados'].valor_label.config(text=str(result[1]))
+        self.cards['aguardando'].valor_label.config(text=str(result[2]))
+        self.cards['sem_resposta'].valor_label.config(text=str(result[3]))
+        
+        # Dados para gráfico de pizza
+        labels = ['Confirmados', 'Aguardando', 'Sem Resposta', 'Outros']
+        sizes = [result[1], result[2], result[3], result[0] - (result[1] + result[2] + result[3])]
+        colors = ['#2ecc71', '#f39c12', '#e74c3c', '#95a5a6']
+        
+        # Atualizar gráfico de pizza
+        self.ax_pizza.clear()
+        self.ax_pizza.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
+        self.ax_pizza.set_title('Distribuição de Status - Hoje')
+        self.canvas_pizza.draw()
+        
+        # Dados últimos 7 dias
+        datas = []
+        confirmados_por_dia = []
+        
+        for i in range(6, -1, -1):
+            data = (date.today() - timedelta(days=i)).isoformat()
+            datas.append(data[-5:])  # MM-DD
+            
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM pacientes
+                WHERE data_consulta = ? AND status = 'confirmado'
+            """, (data,))
+            
+            confirmados_por_dia.append(cursor.fetchone()[0])
+        
+        conn.close()
+        
+        # Atualizar gráfico de barras
+        self.ax_barras.clear()
+        self.ax_barras.bar(datas, confirmados_por_dia, color='#3498db')
+        self.ax_barras.set_title('Confirmações - Últimos 7 Dias')
+        self.ax_barras.set_xlabel('Data')
+        self.ax_barras.set_ylabel('Confirmados')
+        self.ax_barras.tick_params(axis='x', rotation=45)
+        self.fig_barras.tight_layout()
+        self.canvas_barras.draw()
+```
+
+---
+
+## 10. Popular Banco com 500+ Mensagens
+
+### 10.1 backend/populate_messages.py
+
+```python
+import sqlite3
+import random
+
+def popular_mensagens(db_path: str):
+    """
+    Popula banco com 500+ variações de mensagens humanizadas
+    """
+    
+    # ===== COMPONENTES DAS MENSAGENS =====
+    
+    aberturas = [
+        "Oi, tudo bem?",
+        "Olá!",
+        "Bom dia!",
+        "Boa tarde!",
+        "Oi 😊",
+        "E aí!",
+        "Opa!",
+        "Olá, como vai?",
+        "Oi!",
+        "Tudo bem por aí?",
+        "Oi, td bem?",
+        "Oii",
+        "Olá! Tudo certo?",
+        "Bom dia! 😊",
+        "Boa tarde! ☀️",
+        "Oi, espero que esteja bem!",
+        "Olá, tudo tranquilo?",
+        "Oi oi",
+        "E aí, tudo bem?",
+        "Opa! Tudo certo?"
+    ]
+    
+    contextos_clinica = [
+        "Aqui é da clínica.",
+        "Falo da clínica.",
+        "Entrando em contato da clínica.",
+        "Sou da clínica.",
+        "É da clínica aqui.",
+        "Falando da clínica.",
+        "Clínica aqui.",
+        "Da clínica mandando mensagem.",
+        "Clínica entrando em contato.",
+        "É da equipe da clínica.",
+        "Mandando mensagem da clínica.",
+        "Clínica falando aqui.",
+        "Da clínica pra você."
+    ]
+    
+    acao_confirmacao = [
+        "Só confirmando sua consulta para {data} às {hora}.",
+        "Confirmando seu atendimento em {data} às {hora}.",
+        "Sua consulta está marcada para {data} às {hora}.",
+        "Lembrando que sua consulta é {data} às {hora}.",
+        "Você tem consulta marcada para {data} às {hora}.",
+        "Consulta agendada: {data} às {hora}.",
+        "Seu horário é {data} às {hora}.",
+        "Marcado para {data} às {hora}.",
+        "Agendamos você para {data} às {hora}.",
+        "Registramos sua consulta em {data} às {hora}.",
+        "Você está agendado para {data} às {hora}.",
+        "Confirmo sua consulta {data} às {hora}.",
+        "Sua agenda: {data} às {hora}.",
+        "Horário reservado: {data} às {hora}."
+    ]
+    
+    pedido_confirmacao = [
+        "Tudo certo?",
+        "Pode me confirmar, por favor?",
+        "Consegue confirmar?",
+        "Confirmado?",
+        "Confirma pra mim?",
+        "Está ok para você?",
+        "Podemos contar com você?",
+        "Vai dar certo?",
+        "Está mantido?",
+        "Confirma presença?",
+        "Pode vir?",
+        "Consegue comparecer?",
+        "Beleza pra você?",
+        "Está bom esse horário?",
+        "Mantém a consulta?",
+        "Vem confirmar, pode ser?"
+    ]
+    
+    fechamentos = [
+        "Fico no aguardo 😊",
+        "Aguardo retorno!",
+        "Me avisa qualquer coisa.",
+        "Qualquer dúvida, só falar!",
+        "Estamos aqui.",
+        "Até lá!",
+        "Nos vemos!",
+        "Abraço!",
+        "Obrigado!",
+        "Até breve!",
+        "Te aguardo aqui.",
+        "Responde quando puder.",
+        "Fico aguardando confirmação.",
+        "",  # Sem fechamento
+        "",
+        ""
+    ]
+    
+    # ===== GERAR COMBINAÇÕES =====
+    
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    mensagens_geradas = set()
+    
+    # PRIMEIRO CONTATO (200 mensagens)
+    while len([m for m in mensagens_geradas if 'primeiro_contato' in m]) < 200:
+        msg = " ".join([
+            random.choice(aberturas),
+            random.choice(contextos_clinica),
+            random.choice(acao_confirmacao),
+            random.choice(pedido_confirmacao),
+            random.choice(fechamentos)
+        ]).strip()
+        
+        mensagens_geradas.add(('primeiro_contato', msg))
+    
+    # CONFIRMAÇÃO (150 mensagens)
+    while len([m for m in mensagens_geradas if m[0] == 'confirmacao']) < 150:
+        msg = " ".join([
+            random.choice(aberturas),
+            random.choice(acao_confirmacao),
+            random.choice(pedido_confirmacao),
+            random.choice(fechamentos)
+        ]).strip()
+        
+        mensagens_geradas.add(('confirmacao', msg))
+    
+    # LEMBRETE (100 mensagens)
+    lembretes = [
+        "Lembrete: sua consulta é amanhã, {data} às {hora}.",
+        "Oi! Amanhã você tem consulta às {hora}.",
+        "Lembrando: amanhã {data} às {hora}.",
+        "Não esqueça: amanhã às {hora}!",
+        "Sua consulta é amanhã às {hora}. 😊",
+        "Amanhã {data} às {hora}, combinado?",
+        "Consulta amanhã: {hora}.",
+        "Te aguardo amanhã às {hora}!"
+    ]
+    
+    for _ in range(100):
+        msg = " ".join([
+            random.choice(aberturas),
+            random.choice(lembretes),
+            random.choice(fechamentos)
+        ]).strip()
+        mensagens_geradas.add(('lembrete', msg))
+    
+    # REAGENDAMENTO (50 mensagens)
+    reagendar = [
+        "Entendi que precisa reagendar. Qual data seria melhor para você?",
+        "Sem problemas! Que dia funciona melhor?",
+        "Tranquilo! Qual horário prefere?",
+        "Podemos remarcar sim! Qual seria melhor?",
+        "Claro! Me passa uma data que funcione pra você.",
+        "Combinado! Qual dia você prefere?",
+        "Ok! Temos outras opções de horário.",
+        "Vamos remarcar então. Qual data é boa?"
+    ]
+    
+    for _ in range(50):
+        msg = " ".join([
+            random.choice(aberturas),
+            random.choice(reagendar)
+        ]).strip()
+        mensagens_geradas.add(('reagendamento', msg))
+    
+    # FOLLOW-UP (100 mensagens)
+    followup = [
+        "Oi! Vi que não consegui falar com você antes. Consegue confirmar a consulta de {data}?",
+        "Oi novamente! Sobre a consulta de {data} às {hora}, consegue confirmar?",
+        "Tentei falar antes, tudo ok para {data}?",
+        "Oi! Retomando: consulta {data} às {hora}, confirmado?",
+        "Voltando ao assunto: {data} às {hora} está mantido?",
+        "Oi! Sobre sua consulta de {data}, pode confirmar?",
+        "Retorno sobre a consulta: {data} às {hora} ok?",
+        "Oi! Conseguiu ver minha mensagem anterior? Consulta {data} confirmada?"
+    ]
+    
+    for _ in range(100):
+        msg = " ".join([
+            random.choice(followup),
+            random.choice(pedido_confirmacao),
+            random.choice(fechamentos)
+        ]).strip()
+        mensagens_geradas.add(('follow_up', msg))
+    
+    # ===== INSERIR NO BANCO =====
+    
+    print(f"Gerando {len(mensagens_geradas)} mensagens únicas...")
+    
+    for tipo, texto in mensagens_geradas:
+        cursor.execute("""
+            INSERT OR IGNORE INTO mensagens (tipo, texto, ativo)
+            VALUES (?, ?, 1)
+        """, (tipo, texto))
+    
+    conn.commit()
+    
+    # Verificar quantas foram inseridas
+    cursor.execute("SELECT COUNT(*) FROM mensagens")
+    total = cursor.fetchone()[0]
+    
+    print(f"✅ {total} mensagens no banco!")
+    
+    conn.close()
+
+if __name__ == "__main__":
+    popular_mensagens('data/titanium_clinica.db')
+```
+
+---
+
+## 11. Implementação Passo a Passo
+
+### Passo 1: Configuração Inicial
+
+```bash
+# 1. Criar estrutura de pastas
+mkdir -p titanium_clinica/{backend,frontend,automation,data,assets,docs,tests}
+cd titanium_clinica
+
+# 2. Criar ambiente virtual
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# ou
+venv\Scripts\activate  # Windows
+
+# 3. Instalar dependências
+pip install -r requirements.txt
+
+# 4. Criar arquivo .env
+echo "DB_PATH=data/titanium_clinica.db" > .env
+```
+
+### Passo 2: Criar Banco de Dados
+
+```python
+# backend/database.py
+
+import sqlite3
+from pathlib import Path
+
+def criar_banco(db_path: str = 'data/titanium_clinica.db'):
+    """Cria banco de dados com todas as tabelas"""
+    
+    # Criar diretório se não existir
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    # Executar schema completo (do item 4 deste spec)
+    # ... (todo o SQL do item 4.1)
+    
+    conn.commit()
+    conn.close()
+    
+    print(f"✅ Banco criado em: {db_path}")
+
+def criar_usuario_admin(db_path: str, username: str, password: str):
+    """Cria primeiro usuário admin"""
+    from backend.auth import AuthManager
+    
+    auth = AuthManager(db_path)
+    result = auth.criar_usuario(
+        username=username,
+        password=password,
+        nome_completo="Administrador",
+        email="admin@clinica.com",
+        perfil="admin",
+        criado_por=None
+    )
+    
+    if result['success']:
+        print(f"✅ Usuário admin criado: {username}")
+    else:
+        print(f"❌ Erro: {result['message']}")
+
+if __name__ == "__main__":
+    criar_banco()
+    criar_usuario_admin('data/titanium_clinica.db', 'admin', 'admin123')
+```
+
+### Passo 3: Popular Mensagens
+
+```bash
+python backend/populate_messages.py
+```
+
+### Passo 4: App Principal
+
+```python
+# app.py
+
+import tkinter as tk
+from tkinter import messagebox
+from frontend.login_window import LoginWindow
+from frontend.main_window import MainWindow
+from backend.database import criar_banco
+from pathlib import Path
+import sys
+
+class TitaniumClinica:
+    def __init__(self):
+        self.db_path = 'data/titanium_clinica.db'
+        self.user_session = None
+        
+        # Verificar se banco existe
+        if not Path(self.db_path).exists():
+            self._primeira_execucao()
+        
+        # Iniciar login
+        self._mostrar_login()
+    
+    def _primeira_execucao(self):
+        """Executado na primeira vez"""
+        print("🚀 Primeira execução detectada...")
+        print("📦 Criando banco de dados...")
+        
+        from backend.database import criar_banco, criar_usuario_admin
+        
+        criar_banco(self.db_path)
+        
+        # Solicitar credenciais do primeiro admin
+        root = tk.Tk()
+        root.withdraw()
+        
+        usuario = tk.simpledialog.askstring(
+            "Primeiro Acesso",
+            "Crie um nome de usuário administrador:"
+        )
+        
+        senha = tk.simpledialog.askstring(
+            "Primeiro Acesso",
+            "Crie uma senha:",
+            show='●'
+        )
+        
+        if usuario and senha:
+            criar_usuario_admin(self.db_path, usuario, senha)
+            messagebox.showinfo(
+                "Sucesso",
+                f"Sistema configurado!\n\nUsuário: {usuario}\n\n"
+                "Agora você pode fazer login."
+            )
+        else:
+            messagebox.showerror("Erro", "Configuração cancelada")
+            sys.exit(1)
+        
+        root.destroy()
+        
+        # Popular mensagens
+        print("📝 Gerando banco de mensagens...")
+        from backend.populate_messages import popular_mensagens
+        popular_mensagens(self.db_path)
+        
+        print("✅ Sistema pronto!")
+    
+    def _mostrar_login(self):
+        """Exibe tela de login"""
+        login = LoginWindow(
+            self.db_path,
+            on_success_callback=self._login_sucesso
+        )
+        login.run()
+    
+    def _login_sucesso(self, user_session: dict):
+        """Callback após login bem-sucedido"""
+        self.user_session = user_session
+        
+        # Abrir janela principal
+        main = MainWindow(user_session, self.db_path)
+        main.run()
+        
+        # Quando fechar a janela principal, mostrar login novamente
+        self._mostrar_login()
+
+def main():
+    app = TitaniumClinica()
+
+if __name__ == "__main__":
+    main()
+```
+
+### Passo 5: Lista de Pacientes
+
+```python
+# frontend/patient_view.py
+
+import tkinter as tk
+from tkinter import ttk, messagebox
+import sqlite3
+from datetime import date
+
+class PatientView:
+    def __init__(self, parent, db_path: str, user_session: dict, on_preparar_mensagem):
+        self.db_path = db_path
+        self.user_session = user_session
+        self.on_preparar_mensagem = on_preparar_mensagem
+        
+        self.frame = ttk.Frame(parent)
+        self._criar_interface()
+        self.atualizar_lista()
+    
+    def _criar_interface(self):
+        # Toolbar superior
+        toolbar = ttk.Frame(self.frame)
+        toolbar.pack(fill=tk.X, padx=10, pady=10)
+        
+        # Filtros
+        ttk.Label(toolbar, text="Filtrar por status:").pack(side=tk.LEFT, padx=5)
+        
+        self.filtro_status = ttk.Combobox(
+            toolbar,
+            values=['Todos', 'Pendente', 'Mensagem Preparada', 'Enviada', 'Confirmado', 'Sem Resposta'],
+            state='readonly',
+            width=20
+        )
+        self.filtro_status.set('Todos')
+        self.filtro_status.pack(side=tk.LEFT, padx=5)
+        self.filtro_status.bind('<<ComboboxSelected>>', lambda e: self.atualizar_lista())
+        
+        ttk.Button(
+            toolbar,
+            text="🔄 Atualizar",
+            command=self.atualizar_lista
+        ).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(
+            toolbar,
+            text="➕ Novo Paciente",
+            command=self._novo_paciente
+        ).pack(side=tk.RIGHT, padx=5)
+        
+        # Tabela de pacientes
+        table_frame = ttk.Frame(self.frame)
+        table_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+        
+        # Scrollbars
+        scroll_y = ttk.Scrollbar(table_frame, orient=tk.VERTICAL)
+        scroll_x = ttk.Scrollbar(table_frame, orient=tk.HORIZONTAL)
+        
+        # Treeview
+        self.tree = ttk.Treeview(
+            table_frame,
+            columns=('nome', 'telefone', 'data', 'hora', 'status', 'tentativas'),
+            show='headings',
+            yscrollcommand=scroll_y.set,
+            xscrollcommand=scroll_x.set
+        )
+        
+        # Configurar colunas
+        self.tree.heading('nome', text='Nome')
+        self.tree.heading('telefone', text='Telefone')
+        self.tree.heading('data', text='Data')
+        self.tree.heading('hora', text='Hora')
+        self.tree.heading('status', text='Status')
+        self.tree.heading('tentativas', text='Tentativas')
+        
+        self.tree.column('nome', width=200)
+        self.tree.column('telefone', width=120)
+        self.tree.column('data', width=100)
+        self.tree.column('hora', width=80)
+        self.tree.column('status', width=150)
+        self.tree.column('tentativas', width=80, anchor=tk.CENTER)
+        
+        # Posicionar scrollbars
+        scroll_y.config(command=self.tree.yview)
+        scroll_x.config(command=self.tree.xview)
+        
+        scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
+        scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
+        self.tree.pack(fill=tk.BOTH, expand=True)
+        
+        # Bind duplo clique
+        self.tree.bind('<Double-1>', self._on_double_click)
+        
+        # Menu de contexto (botão direito)
+        self.context_menu = tk.Menu(self.tree, tearoff=0)
+        self.context_menu.add_command(label="✉️ Preparar Mensagem", command=self._preparar_mensagem_selecionado)
+        self.context_menu.add_command(label="✅ Marcar como Confirmado", command=self._marcar_confirmado)
+        self.context_menu.add_command(label="🔄 Reagendar", command=self._reagendar)
+        self.context_menu.add_command(label="❌ Sem Resposta", command=self._marcar_sem_resposta)
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="🗑️ Excluir", command=self._excluir_paciente)
+        
+        self.tree.bind('<Button-3>', self._show_context_menu)
+        
+        # Frame de ações
+        actions_frame = ttk.Frame(self.frame)
+        actions_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+        
+        ttk.Button(
+            actions_frame,
+            text="📱 Preparar Mensagem",
+            command=self._preparar_mensagem_selecionado
+        ).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(
+            actions_frame,
+            text="✅ Marcar Confirmado",
+            command=self._marcar_confirmado
+        ).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(
+            actions_frame,
+            text="📊 WhatsApp Web",
+            command=self._abrir_whatsapp
+        ).pack(side=tk.RIGHT, padx=5)
+    
+    def atualizar_lista(self):
+        """Atualiza lista de pacientes"""
+        # Limpar tabela
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Filtro
+        filtro = self.filtro_status.get()
+        hoje = date.today().isoformat()
+        
+        if filtro == 'Todos':
+            cursor.execute("""
+                SELECT id, nome, telefone, data_consulta, hora_consulta, 
+                       status, tentativas_contato
+                FROM pacientes
+                WHERE data_consulta >= ?
+                ORDER BY data_consulta, hora_consulta
+            """, (hoje,))
+        else:
+            status_map = {
+                'Pendente': 'pendente',
+                'Mensagem Preparada': 'mensagem_preparada',
+                'Enviada': 'mensagem_enviada',
+                'Confirmado': 'confirmado',
+                'Sem Resposta': 'sem_resposta'
+            }
+            
+            cursor.execute("""
+                SELECT id, nome, telefone, data_consulta, hora_consulta,
+                       status, tentativas_contato
+                FROM pacientes
+                WHERE status = ? AND data_consulta >= ?
+                ORDER BY data_consulta, hora_consulta
+            """, (status_map[filtro], hoje))
+        
+        pacientes = cursor.fetchall()
+        conn.close()
+        
+        # Inserir dados
+        for paciente in pacientes:
+            pid, nome, tel, data, hora, status, tentativas = paciente
+            
+            # Traduzir status
+            status_display = {
+                'pendente': 'Pendente',
+                'mensagem_preparada': 'Mensagem Preparada',
+                'mensagem_enviada': 'Enviada',
+                'confirmado': 'Confirmado',
+                'reagendado': 'Reagendado',
+                'sem_resposta': 'Sem Resposta',
+                'cancelado': 'Cancelado'
+            }.get(status, status)
+            
+            # Colorir por status
+            tag = ''
+            if status == 'confirmado':
+                tag = 'confirmado'
+            elif status == 'sem_resposta':
+                tag = 'sem_resposta'
+            
+            self.tree.insert(
+                '',
+                tk.END,
+                values=(nome, tel, data, hora, status_display, tentativas),
+                tags=(tag, str(pid))
+            )
+        
+        # Configurar tags
+        self.tree.tag_configure('confirmado', background='#d4edda')
+        self.tree.tag_configure('sem_resposta', background='#f8d7da')
+    
+    def _on_double_click(self, event):
+        """Duplo clique abre preparação de mensagem"""
+        self._preparar_mensagem_selecionado()
+    
+    def _show_context_menu(self, event):
+        """Mostra menu de contexto"""
+        item = self.tree.identify_row(event.y)
+        if item:
+            self.tree.selection_set(item)
+            self.context_menu.post(event.x_root, event.y_root)
+    
+    def _get_selected_id(self):
+        """Retorna ID do paciente selecionado"""
+        selection = self.tree.selection()
+        if not selection:
+            messagebox.showwarning("Atenção", "Selecione um paciente")
+            return None
+        
+        item = selection[0]
+        tags = self.tree.item(item, 'tags')
+        
+        # Último tag é o ID
+        for tag in tags:
+            if tag.isdigit():
+                return int(tag)
+        
+        return None
+    
+    def _preparar_mensagem_selecionado(self):
+        """Prepara mensagem para paciente selecionado"""
+        paciente_id = self._get_selected_id()
+        if paciente_id:
+            self.on_preparar_mensagem(paciente_id)
+    
+    def _marcar_confirmado(self):
+        """Marca paciente como confirmado"""
+        paciente_id = self._get_selected_id()
+        if not paciente_id:
+            return
+        
+        if messagebox.askyesno("Confirmar", "Marcar como confirmado?"):
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            from datetime import datetime
+            
+            cursor.execute("""
+                UPDATE pacientes
+                SET status = 'confirmado',
+                    data_resposta = ?
+                WHERE id = ?
+            """, (datetime.now(), paciente_id))
+            
+            conn.commit()
+            conn.close()
+            
+            self.atualizar_lista()
+            messagebox.showinfo("Sucesso", "Paciente confirmado!")
+    
+    def _marcar_sem_resposta(self):
+        """Marca paciente como sem resposta"""
+        paciente_id = self._get_selected_id()
+        if not paciente_id:
+            return
+        
+        if messagebox.askyesno("Confirmar", "Marcar como sem resposta?"):
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                UPDATE pacientes
+                SET status = 'sem_resposta'
+                WHERE id = ?
+            """, (paciente_id,))
+            
+            conn.commit()
+            conn.close()
+            
+            self.atualizar_lista()
+    
+    def _reagendar(self):
+        """Marca para reagendamento"""
+        paciente_id = self._get_selected_id()
+        if not paciente_id:
+            return
+        
+        # TODO: Abrir diálogo para nova data/hora
+        messagebox.showinfo("Em Desenvolvimento", "Funcionalidade em desenvolvimento")
+    
+    def _excluir_paciente(self):
+        """Exclui paciente (com confirmação)"""
+        paciente_id = self._get_selected_id()
+        if not paciente_id:
+            return
+        
+        if messagebox.askyesno(
+            "Confirmar Exclusão",
+            "⚠️ Tem certeza que deseja excluir este paciente?\n\n"
+            "Esta ação não pode ser desfeita!"
+        ):
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("DELETE FROM pacientes WHERE id = ?", (paciente_id,))
+            
+            conn.commit()
+            conn.close()
+            
+            self.atualizar_lista()
+            messagebox.showinfo("Sucesso", "Paciente excluído")
+    
+    def _novo_paciente(self):
+        """Abre diálogo para cadastrar novo paciente"""
+        messagebox.showinfo("Em Desenvolvimento", "Funcionalidade em desenvolvimento")
+    
+    def _abrir_whatsapp(self):
+        """Abre WhatsApp Web"""
+        from automation.whatsapp import WhatsAppAutomation
+        
+        try:
+            whatsapp = WhatsAppAutomation()
+            whatsapp._iniciar_driver()
+            messagebox.showinfo("Sucesso", "WhatsApp Web aberto! Faça o login com QR Code.")
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao abrir WhatsApp: {str(e)}")
+```
+
+---
+
+## 12. Backup Automático
+
+### 12.1 backend/backup.py
+
+```python
+import sqlite3
+import shutil
+from datetime import datetime, timedelta
+from pathlib import Path
+import os
+
+class BackupManager:
+    def __init__(self, db_path: str, backup_dir: str = 'data/backups'):
+        self.db_path = db_path
+        self.backup_dir = backup_dir
+        Path(backup_dir).mkdir(parents=True, exist_ok=True)
+    
+    def criar_backup(self) -> dict:
+        """Cria backup do banco de dados"""
+        try:
+            # Nome do arquivo de backup
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            backup_file = f"{self.backup_dir}/titanium_backup_{timestamp}.db"
+            
+            # Copiar arquivo
+            shutil.copy2(self.db_path, backup_file)
+            
+            # Comprimir (opcional)
+            # import gzip
+            # with open(backup_file, 'rb') as f_in:
+            #     with gzip.open(f"{backup_file}.gz", 'wb') as f_out:
+            #         shutil.copyfileobj(f_in, f_out)
+            # os.remove(backup_file)
+            
+            return {
+                'success': True,
+                'arquivo': backup_file,
+                'tamanho': os.path.getsize(backup_file)
+            }
+        
+        except Exception as e:
+            return {
+                'success': False,
+                'message': str(e)
+            }
+    
+    def limpar_backups_antigos(self, dias_retencao: int = 7):
+        """Remove backups mais antigos que N dias"""
+        limite = datetime.now() - timedelta(days=dias_retencao)
+        
+        removidos = 0
+        for arquivo in Path(self.backup_dir).glob('titanium_backup_*.db'):
+            # Extrair data do nome do arquivo
+            data_str = arquivo.stem.split('_')[2]  # YYYYMMDD
+            data_backup = datetime.strptime(data_str, '%Y%m%d')
+            
+            if data_backup < limite:
+                arquivo.unlink()
+                removidos += 1
+        
+        return removidos
+    
+    def restaurar_backup(self, backup_file: str) -> bool:
+        """Restaura banco de um backup"""
+        try:
+            if not Path(backup_file).exists():
+                return False
+            
+            # Fazer backup do atual antes de restaurar
+            self.criar_backup()
+            
+            # Restaurar
+            shutil.copy2(backup_file, self.db_path)
+            
+            return True
+        except:
+            return False
+    
+    def listar_backups(self):
+        """Lista todos os backups disponíveis"""
+        backups = []
+        
+        for arquivo in sorted(Path(self.backup_dir).glob('titanium_backup_*.db'), reverse=True):
+            stat = arquivo.stat()
+            backups.append({
+                'arquivo': str(arquivo),
+                'nome': arquivo.name,
+                'tamanho': stat.st_size,
+                'data': datetime.fromtimestamp(stat.st_mtime)
+            })
+        
+        return backups
+
+# Executar backup diário automaticamente
+def backup_automatico():
+    """Função para ser chamada diariamente"""
+    backup_mgr = BackupManager('data/titanium_clinica.db')
+    
+    # Criar backup
+    result = backup_mgr.criar_backup()
+    
+    if result['success']:
+        print(f"✅ Backup criado: {result['arquivo']}")
+        
+        # Limpar backups antigos
+        removidos = backup_mgr.limpar_backups_antigos(7)
+        if removidos > 0:
+            print(f"🗑️ {removidos} backups antigos removidos")
+    else:
+        print(f"❌ Erro no backup: {result['message']}")
+
+if __name__ == "__main__":
+    backup_automatico()
+```
+
+---
+
+## 13. Termo de Consentimento LGPD
+
+### 13.1 docs/termo_consentimento.md
+
+```markdown
+# TERMO DE CONSENTIMENTO PARA TRATAMENTO DE DADOS PESSOAIS
+
+**[NOME DA CLÍNICA]**
+
+Versão 1.0 - Vigente a partir de [DATA]
+
+---
+
+## 1. IDENTIFICAÇÃO
+
+**Paciente:** ________________________________
+**CPF:** ________________________________
+**Telefone:** ________________________________
+
+## 2. FINALIDADE DO TRATAMENTO
+
+A [NOME DA CLÍNICA] solicita seu consentimento para:
+
+✅ Envio de mensagens via WhatsApp para:
+   - Confirmação de consultas agendadas
+   - Lembretes de consultas
+   - Comunicados sobre reagendamentos
+
+## 3. DADOS COLETADOS
+
+- Nome completo
+- Telefone com WhatsApp
+- Data e horário de consultas
+- Tipo de atendimento/exame
+
+## 4. SEUS DIREITOS (LGPD)
+
+Você tem direito a:
+- Acessar seus dados
+- Corrigir dados incorretos
+- Solicitar exclusão dos dados
+- Revogar este consentimento a qualquer momento
+
+## 5. SEGURANÇA
+
+Seus dados são:
+- Armazenados de forma segura
+- Utilizados apenas para as finalidades descritas
+- Não compartilhados com terceiros sem consentimento
+
+## 6. CONSENTIMENTO
+
+( ) AUTORIZO o envio de mensagens via WhatsApp
+( ) NÃO AUTORIZO
+
+---
+
+**Data:** ___/___/______
+
+**Assinatura do Paciente:** _________________________
+
+**Responsável pelo Atendimento:** _________________________
+
+---
+
+**Contato para Exercício de Direitos:**
+Email: [email]
+Telefone: [telefone]
+```
+
+---
+
+## 14. Executar Sistema
+
+### 14.1 Criar executável (opcional)
+
+```bash
+# Instalar PyInstaller
+pip install pyinstaller
+
+# Gerar executável
+pyinstaller --onefile --windowed --icon=assets/icon.ico --name="Titanium Clinica" app.py
+
+# Executável estará em: dist/Titanium Clinica.exe
+```
+
+### 14.2 Executar modo desenvolvimento
+
+```bash
+python app.py
+```
+
+---
+
+## 15. Checklist Final de Segurança
+
+### Antes de Implementar em Produção
+
+- [ ] ✅ Termo LGPD assinado por todos os pacientes
+- [ ] ✅ Backup automático configurado
+- [ ] ✅ Senhas fortes para todos os usuários
+- [ ] ✅ Teste com número secundário (não o principal da clínica)
+- [ ] ✅ Limites anti-bloqueio ativos (máx 30/dia)
+- [ ] ✅ Log de auditoria funcionando
+- [ ] ✅ Equipe treinada sobre uso correto
+- [ ] ✅ Política interna de uso documentada
+- [ ] ✅ Plano B caso WhatsApp bloqueie
+- [ ] ✅ Consulta jurídica sobre conformidade local
+
+### Monitoramento Contínuo
+
+- [ ] Verificar diariamente se há bloqueios
+- [ ] Revisar logs de auditoria semanalmente
+- [ ] Fazer backup semanal extra
+- [ ] Atualizar termos LGPD quando necessário
+- [ ] Revisar permissões de usuários mensalmente
+
+---
+
+## 16. Suporte e Manutenção
+
+### Logs do Sistema
+
+```python
+# Adicionar em backend/audit.py
+
+import logging
+from datetime import datetime
+
+def configurar_logs():
+    logging.basicConfig(
+        filename=f'data/logs/sistema_{datetime.now().strftime("%Y%m")}.log',
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+
+def log_acao(usuario, acao, detalhes=''):
+    logging.info(f"Usuario: {usuario} | Acao: {acao} | Detalhes: {detalhes}")
+
+def log_erro(erro, contexto=''):
+    logging.error(f"Erro: {erro} | Contexto: {contexto}")
+```
+
+---
+
+## 17. Roadmap Futuro
+
+### Versão 2.1 (Próximos 3 meses)
+- Editor visual de mensagens
+- Importação de planilhas Excel
+- Relatórios em PDF
+- Integração com calendários
+
+### Versão 2.2 (6 meses)
+- Multi-clínica (franquias)
+- API REST para integrações
+- App mobile complementar
+- IA para sugestão de melhor horário
+
+### Versão 3.0 (1 ano)
+- WhatsApp Business API oficial
+- Chatbot para respostas automáticas
+- Integração com sistemas de gestão
+- Modo SaaS (nuvem)
+
+---
+
+## 📞 Conclusão
+
+Este spec define um sistema **completo, seguro e em conformidade** com:
+- ✅ Termos de Uso do WhatsApp (envio assistido, não automático)
+- ✅ LGPD (consentimento, auditoria, direitos do titular)
+- ✅ Boas práticas de desenvolvimento
+- ✅ Segurança de dados
+- ✅ Proteção anti-bloqueio
+
+**IMPORTANTE:** O sistema NUNCA envia mensagens automaticamente. O atendente sempre revisa e pressiona ENTER manualmente, garantindo conformidade e humanização total. usuarios
+                WHERE username = ?
+            """, (username,))
+            
+            user = cursor.fetchone()
+            
+            if not user:
+                return {'success': False, 'message': 'Usuário não encontrado'}
+            
+            user_id, senha_hash, nome, perfil, ativo = user
+            
+            if not ativo:
+                return {'success': False, 'message': 'Usuário inativo'}
+            
+            # Verificar senha
+            if not self.verify_password(password, senha_hash):
+                return {'success': False, 'message': 'Senha incorreta'}
+            
+            # Criar token de sessão
+            token = secrets.token_urlsafe(32)
+            ip_maquina = socket.gethostbyname(socket.gethostname())
+            
+            cursor.execute("""
+                INSERT INTO sessoes (usuario_id, token, ip_maquina)
+                VALUES (?, ?, ?)
+            """, (user_id, token, ip_maquina))
+            
+            # Atualizar último acesso
+            cursor.execute("""
+                UPDATE usuarios
+                SET ultimo_acesso = ?
+                WHERE id = ?
+            """, (datetime.now(), user_id))
+            
+            conn.commit()
+            
+            return {
+                'success': True,
+                'user_id': user_id,
+                'nome': nome,
+                'perfil': perfil,
+                'token': token
+            }
+        finally:
+            conn.close()
+    
+    def logout(self, token: str):
+        """Encerra sessão do usuário"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            UPDATE sessoes
+            SET data_logout = ?, ativo = 0
+            WHERE token = ?
+        """, (datetime.now(), token))
+        
+        conn.commit()
+        conn.close()
+    
+    def verificar_sessao(self, token: str) -> Optional[Dict]:
+        """Verifica se sessão é válida"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT s.usuario_id, u.nome_completo, u.perfil, s.data_login
+            FROM sessoes s
+            JOIN usuarios u ON s.usuario_id = u.id
+            WHERE s.token = ? AND s.ativo = 1 AND u.ativo = 1
+        """, (token,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if not result:
+            return None
+        
+        user_id, nome, perfil, data_login = result
+        
+        # Verificar se sessão não expirou (24 horas)
+        if datetime.fromisoformat(data_login) < datetime.now() - timedelta(hours=24):
+            self.logout(token)
+            return None
+        
+        return {
+            'user_id': user_id,
+            'nome': nome,
+            'perfil': perfil
+        }
+    
+    def verificar_permissao(self, perfil: str, acao: str) -> bool:
+        """Verifica se perfil tem permissão para ação"""
+        permissoes = {
+            'admin': ['*'],  # Todas as permissões
+            'gestor': [
+                'visualizar_dashboard',
+                'gerar_relatorios',
+                'gerenciar_usuarios',
+                'configurar_sistema',
+                'preparar_mensagem',
+                'enviar_mensagem',
+                'visualizar_pacientes'
+            ],
+            'atendente': [
+                'preparar_mensagem',
+                'enviar_mensagem',
+                'visualizar_pacientes',
+                'cadastrar_paciente',
+                'atualizar_status'
+            ]
+        }
+        
+        acoes_perfil = permissoes.get(perfil, [])
+        return '*' in acoes_perfil or acao in acoes_perfil
+```
+
+---
+
+## 6. Backend Completo
+
+### 6.1 backend/security.py
+
+```python
+import re
+import validators
+import phonenumbers
+from datetime import datetime, time
+from typing import Dict, Tuple
+
+class SecurityValidator:
+    def __init__(self, db_path: str):
+        self.db_path = db_path
+    
+    def validar_telefone(self, numero: str) -> Tuple[bool, str, str]:
+        """
+        Valida número de telefone brasileiro
+        Retorna: (válido, número_formatado, mensagem_erro)
+        """
+        # Remover caracteres não numéricos
+        numero_limpo = re.sub(r'[^\d+]', '', numero)
+        
+        # Adicionar código do país se não tiver
+        if not numero_limpo.startswith('+'):
+            numero_limpo = '+55' + numero_limpo
+        
+        try:
+            telefone = phonenumbers.parse(numero_limpo)
+            
+            if not phonenumbers.is_valid_number(telefone):
+                return False, '', 'Número de telefone inválido'
+            
+            # Verificar se é brasileiro
+            if telefone.country_code != 55:
+                return False, '', 'Sistema aceita apenas números brasileiros'
+            
+            # Formatar número
+            numero_formatado = phonenumbers.format_number(
+                telefone, 
+                phonenumbers.PhoneNumberFormat.E164
+            )
+            
+            return True, numero_formatado, ''
+        
+        except phonenumbers.NumberParseException:
+            return False, '', 'Formato de número inválido'
+    
+    def validar_email(self, email: str) -> Tuple[bool, str]:
+        """Valida formato de email"""
+        if not email:
+            return True, ''  # Email é opcional
+        
+        if not validators.email(email):
+            return False, 'Email inválido'
+        
+        return True, ''
+    
+    def validar_cpf(self, cpf: str) -> Tuple[bool, str]:
+        """Valida CPF brasileiro"""
+        if not cpf:
+            return True, ''  # CPF é opcional
+        
+        # Remover caracteres não numéricos
+        cpf = re.sub(r'[^\d]', '', cpf)
+        
+        if len(cpf) != 11:
+            return False, 'CPF deve ter 11 dígitos'
+        
+        # Verificar se todos os dígitos são iguais
+        if cpf == cpf[0] * 11:
+            return False, 'CPF inválido'
+        
+        # Validar dígitos verificadores
+        def calcular_digito(cpf_parcial, peso_inicial):
+            soma = sum(int(cpf_parcial[i]) * (peso_inicial - i) 
+                      for i in range(len(cpf_parcial)))
+            resto = soma % 11
+            return 0 if resto < 2 else 11 - resto
+        
+        digito1 = calcular_digito(cpf[:9], 10)
+        digito2 = calcular_digito(cpf[:10], 11)
+        
+        if cpf[-2:] != f"{digito1}{digito2}":
+            return False, 'CPF inválido'
+        
+        return True, ''
+    
+    def verificar_horario_permitido(self) -> Tuple[bool, str]:
+        """Verifica se está no horário permitido para envios"""
+        import sqlite3
+        
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT valor_limite FROM limites_sistema
+            WHERE tipo_limite IN ('horario_inicio', 'horario_fim')
+        """)
+        
+        limites = cursor.fetchall()
+        conn.close()
+        
+        hora_inicio = int(limites[0][0])
+        hora_fim = int(limites[1][0])
+        
+        hora_atual = datetime.now().hour
+        
+        if hora_atual < hora_inicio or hora_atual >= hora_fim:
+            return False, f'Envios permitidos apenas entre {hora_inicio}h e {hora_fim}h'
+        
+        return True, ''
+    
+    def validar_intervalo_envio(self, ultimo_envio: datetime) -> Tuple[bool, str]:
+        """Verifica intervalo mínimo entre envios"""
+        import sqlite3
+        
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT valor_limite FROM limites_sistema
+            WHERE tipo_limite = 'intervalo_minimo_segundos'
+        """)
+        
+        intervalo_minimo = cursor.fetchone()[0]
+        conn.close()
+        
+        if ultimo_envio:
+            tempo_decorrido = (datetime.now() - ultimo_envio).total_seconds()
+            
+            if tempo_decorrido < intervalo_minimo:
+                segundos_faltantes = int(intervalo_minimo - tempo_decorrido)
+                return False, f'Aguarde {segundos_faltantes} segundos antes do próximo envio'
+        
+        return True, ''
+```
+
+### 6.2 backend/lgpd.py
+
+```python
+import sqlite3
+from datetime import datetime
+from typing import Dict, Optional
+
+class LGPDManager:
+    def __init__(self, db_path: str):
+        self.db_path = db_path
+    
+    def _get_connection(self):
+        return sqlite3.connect(self.db_path)
+    
+    def registrar_consentimento(self, paciente_id: int, forma: str,
+                               usuario_id: int, observacoes: str = '') -> Dict:
+        """Registra consentimento LGPD do paciente"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Obter versão atual do termo
+            cursor.execute("""
+                SELECT versao FROM termos_lgpd
+                WHERE ativo = 1
+                ORDER BY data_vigencia DESC
+                LIMIT 1
+            """)
+            
+            versao_termo = cursor.fetchone()
+            if not versao_termo:
+                return {
+                    'success': False,
+                    'message': 'Nenhum termo LGPD ativo encontrado'
+                }
+            
+            versao = versao_termo[0]
+            
+            # Atualizar paciente
+            cursor.execute("""
+                UPDATE pacientes
+                SET consentimento_whatsapp = 1,
+                    data_consentimento = ?,
+                    consentimento_obtido_por = ?,
+                    forma_consentimento = ?,
+                    termos_versao = ?,
+                    observacoes = ?
+                WHERE id = ?
+            """, (datetime.now(), usuario_id, forma, versao, observacoes, paciente_id))
+            
+            conn.commit()
+            
+            # Log de auditoria
+            self._log_auditoria(
+                usuario_id,
+                'consentimento_lgpd',
+                'pacientes',
+                paciente_id,
+                f'Consentimento obtido de forma {forma}'
+            )
+            
+            return {
+                'success': True,
+                'message': 'Consentimento registrado com sucesso'
+            }
+        
+        except Exception as e:
+            return {
+                'success': False,
+                'message': f'Erro ao registrar consentimento: {str(e)}'
+            }
+        finally:
+            conn.close()
+    
+    def verificar_consentimento(self, paciente_id: int) -> bool:
+        """Verifica se paciente deu consentimento"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT consentimento_whatsapp
+            FROM pacientes
+            WHERE id = ?
+        """, (paciente_id,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        return result and result[0] == 1
+    
+    def revogar_consentimento(self, paciente_id: int, usuario_id: int) -> Dict:
+        """Permite que paciente revogue consentimento"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            UPDATE pacientes
+            SET consentimento_whatsapp = 0
+            WHERE id = ?
+        """, (paciente_id,))
+        
+        conn.commit()
+        
+        # Log de auditoria
+        self._log_auditoria(
+            usuario_id,
+            'revogacao_consentimento',
+            'pacientes',
+            paciente_id,
+            'Consentimento revogado pelo paciente'
+        )
+        
+        conn.close()
+        
+        return {
+            'success': True,
+            'message': 'Consentimento revogado. Paciente não receberá mais mensagens.'
+        }
+    
+    def obter_termo_atual(self) -> Optional[str]:
+        """Obtém texto do termo LGPD atual"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT texto_completo FROM termos_lgpd
+            WHERE ativo = 1
+            ORDER BY data_vigencia DESC
+            LIMIT 1
+        """)
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        return result[0] if result else None
+    
+    def gerar_relatorio_consentimentos(self, data_inicio: str, data_fim: str) -> Dict:
+        """Gera relatório de consentimentos por período"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN consentimento_whatsapp = 1 THEN 1 ELSE 0 END) as com_consentimento,
+                SUM(CASE WHEN consentimento_whatsapp = 0 THEN 1 ELSE 0 END) as sem_consentimento,
+                forma_consentimento,
+                COUNT(*) as qtd
+            FROM
