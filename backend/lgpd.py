@@ -140,15 +140,29 @@ class LGPDManager:
         conn = self._get_connection()
         cursor = conn.cursor()
         
+        # Primeiro, obter totais gerais
         cursor.execute("""
             SELECT 
                 COUNT(*) as total,
                 SUM(CASE WHEN consentimento_whatsapp = 1 THEN 1 ELSE 0 END) as com_consentimento,
-                SUM(CASE WHEN consentimento_whatsapp = 0 THEN 1 ELSE 0 END) as sem_consentimento,
+                SUM(CASE WHEN consentimento_whatsapp = 0 THEN 1 ELSE 0 END) as sem_consentimento
+            FROM pacientes
+            WHERE data_consentimento BETWEEN ? AND ?
+        """, (data_inicio, data_fim))
+        
+        total_row = cursor.fetchone()
+        total = total_row[0] or 0 if total_row else 0
+        com_consentimento = total_row[1] or 0 if total_row else 0
+        sem_consentimento = total_row[2] or 0 if total_row else 0
+        
+        # Depois, obter por forma
+        cursor.execute("""
+            SELECT 
                 forma_consentimento,
                 COUNT(*) as qtd
             FROM pacientes
-            WHERE data_consentimento BETWEEN ? AND ?
+            WHERE data_consentimento BETWEEN ? AND ? 
+                AND forma_consentimento IS NOT NULL
             GROUP BY forma_consentimento
         """, (data_inicio, data_fim))
         
@@ -156,8 +170,8 @@ class LGPDManager:
         conn.close()
         
         return {
-            'total': resultados[0][0] if resultados else 0,
-            'com_consentimento': resultados[0][1] if resultados else 0,
-            'sem_consentimento': resultados[0][2] if resultados else 0,
-            'por_forma': [(r[3], r[4]) for r in resultados if r[3]]
+            'total': total,
+            'com_consentimento': com_consentimento,
+            'sem_consentimento': sem_consentimento,
+            'por_forma': [(r[0], r[1]) for r in resultados]
         }

@@ -373,12 +373,39 @@ class ReportDialog:
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao gerar relatório: {str(e)}")
 
+    def _converter_data_para_sql(self, data_str: str) -> str:
+        """Converte data de DD/MM/YYYY para YYYY-MM-DD"""
+        try:
+            if not data_str or not data_str.strip():
+                return None
+            partes = data_str.strip().split('/')
+            if len(partes) == 3:
+                return f"{partes[2]}-{partes[1]}-{partes[0]}"
+            return data_str  # Já está no formato correto
+        except:
+            return data_str
+    
+    def _converter_data_para_exibicao(self, data_str: str) -> str:
+        """Converte data de YYYY-MM-DD para DD/MM/YYYY"""
+        try:
+            if not data_str:
+                return ''
+            if '/' in data_str:
+                return data_str  # Já está no formato correto
+            partes = data_str.split('-')
+            if len(partes) == 3:
+                return f"{partes[2]}/{partes[1]}/{partes[0]}"
+            return data_str
+        except:
+            return data_str
+
     def _relatorio_diario(self, formato):
         from backend.reporting import ReportingManager
         from datetime import date
 
         reporting = ReportingManager(self.db_path)
-        data = date.today().isoformat()
+        # Usar formato DD/MM/YYYY que a função espera
+        data = date.today().strftime('%d/%m/%Y')
 
         relatorio = reporting.gerar_relatorio_diario(data)
 
@@ -409,14 +436,20 @@ class ReportDialog:
     def _relatorio_lgpd(self, formato):
         from backend.lgpd import LGPDManager
 
-        lgpd = LGPDManager(self.db_path)
-        data_inicio = "2024-01-01"
-        data_fim = "2024-12-31"
+        # Obter datas dos campos de entrada
+        data_inicio_str = self.data_inicial.get().strip()
+        data_fim_str = self.data_final.get().strip()
 
+        # Converter para formato SQL (YYYY-MM-DD)
+        data_inicio = self._converter_data_para_sql(data_inicio_str) if data_inicio_str else "2024-01-01"
+        data_fim = self._converter_data_para_sql(data_fim_str) if data_fim_str else "2024-12-31"
+
+        lgpd = LGPDManager(self.db_path)
         relatorio = lgpd.gerar_relatorio_consentimentos(data_inicio, data_fim)
 
         if formato == "tela":
             msg = f"RELATÓRIO DE CONSENTIMENTOS LGPD\n\n"
+            msg += f"Período: {self._converter_data_para_exibicao(data_inicio)} a {self._converter_data_para_exibicao(data_fim)}\n\n"
             msg += f"Total de Pacientes: {relatorio['total']}\n"
             msg += f"Com Consentimento: {relatorio['com_consentimento']}\n"
             msg += f"Sem Consentimento: {relatorio['sem_consentimento']}\n\n"
@@ -437,20 +470,25 @@ class ReportDialog:
 
         else:
             # Exportar PDF
-            self._exportar_relatorio_lgpd_pdf(relatorio)
+            self._exportar_relatorio_lgpd_pdf(relatorio, data_inicio, data_fim)
 
     def _relatorio_envios(self, formato):
         from backend.reporting import ReportingManager
 
-        # Usar datas padrão se não informadas
-        data_inicio = "2024-01-01"
-        data_fim = "2024-12-31"
+        # Obter datas dos campos de entrada
+        data_inicio_str = self.data_inicial.get().strip()
+        data_fim_str = self.data_final.get().strip()
+
+        # Converter para formato SQL (YYYY-MM-DD)
+        data_inicio = self._converter_data_para_sql(data_inicio_str) if data_inicio_str else "2024-01-01"
+        data_fim = self._converter_data_para_sql(data_fim_str) if data_fim_str else "2024-12-31"
 
         reporting = ReportingManager(self.db_path)
         relatorio = reporting.relatorio_envios_periodo(data_inicio, data_fim)
 
         if formato == "tela":
             msg = f"RELATÓRIO DE ENVIOS POR PERÍODO\n\n"
+            msg += f"Período: {self._converter_data_para_exibicao(data_inicio)} a {self._converter_data_para_exibicao(data_fim)}\n\n"
 
             for item in relatorio[:20]:  # Limitar a 20 primeiros
                 msg += f"Data: {item['data']} | Tipo: {item['tipo_mensagem']} | Envios: {item['total_envios']} | Únicos: {item['numeros_unicos']}\n"
@@ -470,7 +508,254 @@ class ReportDialog:
 
         else:
             # Exportar PDF
-            self._exportar_relatorio_envios_pdf(relatorio)
+            self._exportar_relatorio_envios_pdf(relatorio, data_inicio, data_fim)
+
+    def _exportar_relatorio_diario_pdf(self, relatorio):
+        """Exporta relatório diário para PDF"""
+        try:
+            # Selecionar local para salvar
+            filename = filedialog.asksaveasfilename(
+                defaultextension=".pdf",
+                filetypes=[("PDF files", "*.pdf")],
+                title="Salvar Relatório Diário",
+                initialfile=f"relatorio_diario_{relatorio['data'].replace('/', '-')}.pdf"
+            )
+
+            if not filename:
+                return
+
+            # Criar PDF
+            doc = SimpleDocTemplate(filename, pagesize=letter)
+            styles = getSampleStyleSheet()
+            story = []
+
+            # Título
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Heading1'],
+                fontSize=16,
+                spaceAfter=30,
+                alignment=1  # Center
+            )
+            story.append(Paragraph(f"Relatório Diário - {relatorio['data']}", title_style))
+            story.append(Spacer(1, 12))
+
+            # Dados
+            data = [
+                ["Métrica", "Valor"],
+                ["Total de Pacientes", str(relatorio['total_pacientes'])],
+                ["Confirmados", str(relatorio['confirmados'])],
+                ["Aguardando Resposta", str(relatorio['aguardando'])],
+                ["Sem Resposta", str(relatorio['sem_resposta'])],
+                ["Reagendados", str(relatorio['reagendados'])],
+                ["Cancelados", str(relatorio['cancelados'])],
+                ["Taxa de Confirmação", f"{relatorio['taxa_confirmacao']}%"]
+            ]
+
+            table = Table(data)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 14),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+
+            story.append(table)
+            story.append(Spacer(1, 20))
+
+            # Rodapé
+            footer_style = ParagraphStyle(
+                'Footer',
+                parent=styles['Normal'],
+                fontSize=8,
+                textColor=colors.grey
+            )
+            story.append(Paragraph(f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}", footer_style))
+
+            doc.build(story)
+            messagebox.showinfo("Sucesso", f"Relatório salvo em:\n{filename}")
+
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao gerar PDF: {str(e)}")
+
+    def _exportar_relatorio_lgpd_pdf(self, relatorio, data_inicio: str, data_fim: str):
+        """Exporta relatório LGPD para PDF"""
+        try:
+            filename = filedialog.asksaveasfilename(
+                defaultextension=".pdf",
+                filetypes=[("PDF files", "*.pdf")],
+                title="Salvar Relatório LGPD",
+                initialfile="relatorio_lgpd.pdf"
+            )
+
+            if not filename:
+                return
+
+            doc = SimpleDocTemplate(filename, pagesize=letter)
+            styles = getSampleStyleSheet()
+            story = []
+
+            # Título
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Heading1'],
+                fontSize=16,
+                spaceAfter=30,
+                alignment=1
+            )
+            story.append(Paragraph("Relatório de Consentimentos LGPD", title_style))
+            story.append(Spacer(1, 12))
+
+            # Período
+            periodo_texto = f"Período: {self._converter_data_para_exibicao(data_inicio)} a {self._converter_data_para_exibicao(data_fim)}"
+            story.append(Paragraph(periodo_texto, styles['Normal']))
+            story.append(Spacer(1, 12))
+
+            # Dados gerais
+            data_geral = [
+                ["Métrica", "Valor"],
+                ["Total de Pacientes", str(relatorio['total'])],
+                ["Com Consentimento", str(relatorio['com_consentimento'])],
+                ["Sem Consentimento", str(relatorio['sem_consentimento'])]
+            ]
+
+            table_geral = Table(data_geral)
+            table_geral.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+
+            story.append(table_geral)
+            story.append(Spacer(1, 20))
+
+            # Consentimentos por forma
+            if relatorio['por_forma']:
+                story.append(Paragraph("Consentimentos por Forma:", styles['Heading2']))
+                story.append(Spacer(1, 12))
+
+                data_forma = [["Forma", "Quantidade"]]
+                for forma, qtd in relatorio['por_forma']:
+                    data_forma.append([forma or 'Não informado', str(qtd)])
+
+                table_forma = Table(data_forma)
+                table_forma.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                ]))
+
+                story.append(table_forma)
+                story.append(Spacer(1, 20))
+
+            # Rodapé
+            footer_style = ParagraphStyle(
+                'Footer',
+                parent=styles['Normal'],
+                fontSize=8,
+                textColor=colors.grey
+            )
+            story.append(Paragraph(f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}", footer_style))
+
+            doc.build(story)
+            messagebox.showinfo("Sucesso", f"Relatório salvo em:\n{filename}")
+
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao gerar PDF: {str(e)}")
+
+    def _exportar_relatorio_envios_pdf(self, relatorio, data_inicio: str, data_fim: str):
+        """Exporta relatório de envios para PDF"""
+        try:
+            filename = filedialog.asksaveasfilename(
+                defaultextension=".pdf",
+                filetypes=[("PDF files", "*.pdf")],
+                title="Salvar Relatório de Envios",
+                initialfile="relatorio_envios.pdf"
+            )
+
+            if not filename:
+                return
+
+            doc = SimpleDocTemplate(filename, pagesize=letter)
+            styles = getSampleStyleSheet()
+            story = []
+
+            # Título
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Heading1'],
+                fontSize=16,
+                spaceAfter=30,
+                alignment=1
+            )
+            story.append(Paragraph("Relatório de Envios por Período", title_style))
+            story.append(Spacer(1, 12))
+
+            # Período
+            periodo_texto = f"Período: {self._converter_data_para_exibicao(data_inicio)} a {self._converter_data_para_exibicao(data_fim)}"
+            story.append(Paragraph(periodo_texto, styles['Normal']))
+            story.append(Spacer(1, 12))
+
+            # Limitar a 50 registros para o PDF
+            dados_limitados = relatorio[:50]
+
+            # Tabela
+            data = [["Data", "Tipo Mensagem", "Total Envios", "Números Únicos"]]
+            for item in dados_limitados:
+                data.append([
+                    self._converter_data_para_exibicao(item['data']),
+                    item['tipo_mensagem'],
+                    str(item['total_envios']),
+                    str(item['numeros_unicos'])
+                ])
+
+            table = Table(data)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('FONTSIZE', (0, 1), (-1, -1), 8)
+            ]))
+
+            story.append(table)
+
+            if len(relatorio) > 50:
+                story.append(Spacer(1, 12))
+                story.append(Paragraph(f"... e mais {len(relatorio) - 50} registros", styles['Normal']))
+
+            story.append(Spacer(1, 20))
+
+            # Rodapé
+            footer_style = ParagraphStyle(
+                'Footer',
+                parent=styles['Normal'],
+                fontSize=8,
+                textColor=colors.grey
+            )
+            story.append(Paragraph(f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}", footer_style))
+
+            doc.build(story)
+            messagebox.showinfo("Sucesso", f"Relatório salvo em:\n{filename}")
+
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao gerar PDF: {str(e)}")
 
     def _center_window(self):
         self.window.update_idletasks()
@@ -837,242 +1122,6 @@ class UserDialog:
         finally:
             if conn:
                 conn.close()
-
-    def _exportar_relatorio_diario_pdf(self, relatorio):
-        """Exporta relatório diário para PDF"""
-        try:
-            # Selecionar local para salvar
-            filename = filedialog.asksaveasfilename(
-                defaultextension=".pdf",
-                filetypes=[("PDF files", "*.pdf")],
-                title="Salvar Relatório Diário",
-                initialfile=f"relatorio_diario_{relatorio['data']}.pdf"
-            )
-
-            if not filename:
-                return
-
-            # Criar PDF
-            doc = SimpleDocTemplate(filename, pagesize=letter)
-            styles = getSampleStyleSheet()
-            story = []
-
-            # Título
-            title_style = ParagraphStyle(
-                'CustomTitle',
-                parent=styles['Heading1'],
-                fontSize=16,
-                spaceAfter=30,
-                alignment=1  # Center
-            )
-            story.append(Paragraph(f"Relatório Diário - {relatorio['data']}", title_style))
-            story.append(Spacer(1, 12))
-
-            # Dados
-            data = [
-                ["Métrica", "Valor"],
-                ["Total de Pacientes", str(relatorio['total_pacientes'])],
-                ["Confirmados", str(relatorio['confirmados'])],
-                ["Aguardando Resposta", str(relatorio['aguardando'])],
-                ["Sem Resposta", str(relatorio['sem_resposta'])],
-                ["Reagendados", str(relatorio['reagendados'])],
-                ["Cancelados", str(relatorio['cancelados'])],
-                ["Taxa de Confirmação", f"{relatorio['taxa_confirmacao']}%"]
-            ]
-
-            table = Table(data)
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 14),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
-            ]))
-
-            story.append(table)
-            story.append(Spacer(1, 20))
-
-            # Rodapé
-            footer_style = ParagraphStyle(
-                'Footer',
-                parent=styles['Normal'],
-                fontSize=8,
-                textColor=colors.grey
-            )
-            story.append(Paragraph(f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}", footer_style))
-
-            doc.build(story)
-            messagebox.showinfo("Sucesso", f"Relatório salvo em:\n{filename}")
-
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao gerar PDF: {str(e)}")
-
-    def _exportar_relatorio_lgpd_pdf(self, relatorio):
-        """Exporta relatório LGPD para PDF"""
-        try:
-            filename = filedialog.asksaveasfilename(
-                defaultextension=".pdf",
-                filetypes=[("PDF files", "*.pdf")],
-                title="Salvar Relatório LGPD",
-                initialfile="relatorio_lgpd.pdf"
-            )
-
-            if not filename:
-                return
-
-            doc = SimpleDocTemplate(filename, pagesize=letter)
-            styles = getSampleStyleSheet()
-            story = []
-
-            # Título
-            title_style = ParagraphStyle(
-                'CustomTitle',
-                parent=styles['Heading1'],
-                fontSize=16,
-                spaceAfter=30,
-                alignment=1
-            )
-            story.append(Paragraph("Relatório de Consentimentos LGPD", title_style))
-            story.append(Spacer(1, 12))
-
-            # Dados gerais
-            data_geral = [
-                ["Métrica", "Valor"],
-                ["Total de Pacientes", str(relatorio['total'])],
-                ["Com Consentimento", str(relatorio['com_consentimento'])],
-                ["Sem Consentimento", str(relatorio['sem_consentimento'])]
-            ]
-
-            table_geral = Table(data_geral)
-            table_geral.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
-            ]))
-
-            story.append(table_geral)
-            story.append(Spacer(1, 20))
-
-            # Consentimentos por forma
-            story.append(Paragraph("Consentimentos por Forma:", styles['Heading2']))
-            story.append(Spacer(1, 12))
-
-            data_forma = [["Forma", "Quantidade"]]
-            for forma, qtd in relatorio['por_forma']:
-                data_forma.append([forma, str(qtd)])
-
-            table_forma = Table(data_forma)
-            table_forma.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
-            ]))
-
-            story.append(table_forma)
-            story.append(Spacer(1, 20))
-
-            # Rodapé
-            footer_style = ParagraphStyle(
-                'Footer',
-                parent=styles['Normal'],
-                fontSize=8,
-                textColor=colors.grey
-            )
-            story.append(Paragraph(f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}", footer_style))
-
-            doc.build(story)
-            messagebox.showinfo("Sucesso", f"Relatório salvo em:\n{filename}")
-
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao gerar PDF: {str(e)}")
-
-    def _exportar_relatorio_envios_pdf(self, relatorio):
-        """Exporta relatório de envios para PDF"""
-        try:
-            filename = filedialog.asksaveasfilename(
-                defaultextension=".pdf",
-                filetypes=[("PDF files", "*.pdf")],
-                title="Salvar Relatório de Envios",
-                initialfile="relatorio_envios.pdf"
-            )
-
-            if not filename:
-                return
-
-            doc = SimpleDocTemplate(filename, pagesize=letter)
-            styles = getSampleStyleSheet()
-            story = []
-
-            # Título
-            title_style = ParagraphStyle(
-                'CustomTitle',
-                parent=styles['Heading1'],
-                fontSize=16,
-                spaceAfter=30,
-                alignment=1
-            )
-            story.append(Paragraph("Relatório de Envios por Período", title_style))
-            story.append(Spacer(1, 12))
-
-            # Limitar a 50 registros para o PDF
-            dados_limitados = relatorio[:50]
-
-            # Tabela
-            data = [["Data", "Tipo Mensagem", "Total Envios", "Números Únicos"]]
-            for item in dados_limitados:
-                data.append([
-                    item['data'],
-                    item['tipo_mensagem'],
-                    str(item['total_envios']),
-                    str(item['numeros_unicos'])
-                ])
-
-            table = Table(data)
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 10),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black),
-                ('FONTSIZE', (0, 1), (-1, -1), 8)
-            ]))
-
-            story.append(table)
-
-            if len(relatorio) > 50:
-                story.append(Spacer(1, 12))
-                story.append(Paragraph(f"... e mais {len(relatorio) - 50} registros", styles['Normal']))
-
-            story.append(Spacer(1, 20))
-
-            # Rodapé
-            footer_style = ParagraphStyle(
-                'Footer',
-                parent=styles['Normal'],
-                fontSize=8,
-                textColor=colors.grey
-            )
-            story.append(Paragraph(f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}", footer_style))
-
-            doc.build(story)
-            messagebox.showinfo("Sucesso", f"Relatório salvo em:\n{filename}")
-
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao gerar PDF: {str(e)}")
 
     def _center_window(self):
         self.window.update_idletasks()

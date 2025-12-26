@@ -22,7 +22,7 @@ class AuthManager:
         return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
     
     def criar_usuario(self, username: str, password: str, nome_completo: str,
-                      email: str, perfil: str, criado_por: int) -> Dict:
+                      email: str, perfil: str, criado_por: Optional[int] = None) -> Dict:
         """Cria novo usuário no sistema"""
         conn = self._get_connection()
         cursor = conn.cursor()

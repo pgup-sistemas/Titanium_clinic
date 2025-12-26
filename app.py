@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, simpledialog
 from frontend.login_window import LoginWindow
 from frontend.main_window import MainWindow
 from backend.database import criar_banco
@@ -10,13 +10,28 @@ class TitaniumClinica:
     def __init__(self):
         self.db_path = 'data/titanium_clinica.db'
         self.user_session = None
+        self.backup_scheduler = None
         
         # Verificar se banco existe
         if not Path(self.db_path).exists():
             self._primeira_execucao()
         
+        # Iniciar backup automático
+        self._iniciar_backup_automatico()
+        
         # Iniciar login
         self._mostrar_login()
+    
+    def _iniciar_backup_automatico(self):
+        """Inicia scheduler de backup automático"""
+        try:
+            from backend.backup_scheduler import BackupScheduler
+            self.backup_scheduler = BackupScheduler(self.db_path)
+            self.backup_scheduler.iniciar()
+            print("✅ Backup automático iniciado")
+        except Exception as e:
+            print(f"⚠️  Erro ao iniciar backup automático: {str(e)}")
+            self.backup_scheduler = None
     
     def _primeira_execucao(self):
         """Executado na primeira vez"""
@@ -31,12 +46,12 @@ class TitaniumClinica:
         root = tk.Tk()
         root.withdraw()
         
-        usuario = tk.simpledialog.askstring(
+        usuario = simpledialog.askstring(
             "Primeiro Acesso",
             "Crie um nome de usuário administrador:"
         )
         
-        senha = tk.simpledialog.askstring(
+        senha = simpledialog.askstring(
             "Primeiro Acesso",
             "Crie uma senha:",
             show='●'
@@ -80,9 +95,15 @@ class TitaniumClinica:
         
         # Quando fechar a janela principal, mostrar login novamente
         self._mostrar_login()
+    
+    def __del__(self):
+        """Destrutor - para backup scheduler ao fechar"""
+        if self.backup_scheduler:
+            self.backup_scheduler.parar()
 
 def main():
     app = TitaniumClinica()
+
 
 if __name__ == "__main__":
     main()

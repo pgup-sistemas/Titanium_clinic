@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Arquivo de configuração com credenciais
+.env
+
+# Banco de dados
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+data/logs/
+
+# Backups (opcional - descomente se não quiser versionar backups)
+# data/backups/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Distribuição
+dist/
+build/
+*.egg-info/
+

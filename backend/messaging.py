@@ -67,17 +67,27 @@ class MessageManager:
     
     def _personalizar_mensagem(self, texto: str, dados: Dict) -> str:
         """Substitui variáveis na mensagem"""
-        # Formatar data
+        # Formatar data (tentar múltiplos formatos)
         if dados.get('data_consulta'):
-            try:
-                data_obj = datetime.strptime(dados['data_consulta'], '%d/%m/%Y')
+            data_obj = None
+            # SQLite geralmente armazena DATE como YYYY-MM-DD
+            formatos = ['%Y-%m-%d', '%d/%m/%Y', '%Y/%m/%d', '%d-%m-%Y']
+            
+            for fmt in formatos:
+                try:
+                    data_obj = datetime.strptime(str(dados['data_consulta']), fmt)
+                    break
+                except (ValueError, TypeError):
+                    continue
+            
+            if data_obj:
                 data_formatada = data_obj.strftime('%d/%m/%Y')
                 dia_semana = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'][data_obj.weekday()]
                 texto = texto.replace('{data}', data_formatada)
                 texto = texto.replace('{dia_semana}', dia_semana)
-            except ValueError:
-                # Data inválida, usar placeholders
-                texto = texto.replace('{data}', 'a data agendada')
+            else:
+                # Data inválida ou formato desconhecido, usar valor original
+                texto = texto.replace('{data}', str(dados['data_consulta']))
                 texto = texto.replace('{dia_semana}', 'o dia')
         else:
             texto = texto.replace('{data}', 'hoje')

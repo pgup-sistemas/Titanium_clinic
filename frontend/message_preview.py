@@ -93,36 +93,11 @@ class MessagePreview:
             self.text_mensagem.insert(1.0, self.paciente['mensagem_preparada'])
             self.text_mensagem.config(state=tk.DISABLED)
         
-        # Botões
-        btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(fill=tk.X, pady=(10, 0))
+        # Botões - usar atributo para poder atualizar depois
+        self.btn_frame = ttk.Frame(main_frame)
+        self.btn_frame.pack(fill=tk.X, pady=(10, 0))
         
-        if self.paciente['mensagem_preparada']:
-            # Mensagem já preparada - mostrar botão de enviar
-            ttk.Button(
-                btn_frame,
-                text="📱 Enviar via WhatsApp",
-                command=self._enviar_whatsapp
-            ).pack(side=tk.LEFT, padx=5)
-            
-            ttk.Button(
-                btn_frame,
-                text="🔄 Gerar Nova Mensagem",
-                command=self._gerar_nova_mensagem
-            ).pack(side=tk.LEFT, padx=5)
-        else:
-            # Preparar nova mensagem
-            ttk.Button(
-                btn_frame,
-                text="✨ Preparar Mensagem",
-                command=self._preparar_mensagem
-            ).pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(
-            btn_frame,
-            text="Cancelar",
-            command=self.window.destroy
-        ).pack(side=tk.RIGHT, padx=5)
+        self._atualizar_botoes()
     
     def _preparar_mensagem(self):
         # Verificar consentimento
@@ -162,9 +137,17 @@ class MessagePreview:
         result = self.msg_manager.preparar_mensagem_paciente(self.paciente_id, tipo_msg)
         
         if result['success']:
+            # Atualizar campo de texto (permitir edição para revisão)
             self.text_mensagem.config(state=tk.NORMAL)
             self.text_mensagem.delete(1.0, tk.END)
             self.text_mensagem.insert(1.0, result['mensagem'])
+            # Manter editável para permitir ajustes antes de enviar
+            
+            # Recarregar dados do paciente para atualizar status
+            self._carregar_dados_paciente()
+            
+            # Atualizar botões - mostrar opções de envio
+            self._atualizar_botoes_pos_preparacao()
             
             messagebox.showinfo(
                 "Sucesso",
@@ -173,8 +156,7 @@ class MessagePreview:
                 "para colar no WhatsApp Web."
             )
             
-            # Atualizar interface
-            self.window.destroy()
+            # Atualizar lista principal se callback disponível
             if self.on_enviado:
                 self.on_enviado()
         else:
@@ -248,6 +230,43 @@ class MessagePreview:
         
         return 'confirmacao'
     
+    def _atualizar_botoes(self):
+        """Atualiza botões baseado no estado atual"""
+        # Limpar botões existentes
+        for widget in self.btn_frame.winfo_children():
+            widget.destroy()
+        
+        if self.paciente.get('mensagem_preparada'):
+            # Mensagem já preparada - mostrar botão de enviar
+            ttk.Button(
+                self.btn_frame,
+                text="📱 Enviar via WhatsApp",
+                command=self._enviar_whatsapp
+            ).pack(side=tk.LEFT, padx=5)
+            
+            ttk.Button(
+                self.btn_frame,
+                text="🔄 Gerar Nova Mensagem",
+                command=self._gerar_nova_mensagem
+            ).pack(side=tk.LEFT, padx=5)
+        else:
+            # Preparar nova mensagem
+            ttk.Button(
+                self.btn_frame,
+                text="✨ Preparar Mensagem",
+                command=self._preparar_mensagem
+            ).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(
+            self.btn_frame,
+            text="Cancelar",
+            command=self.window.destroy
+        ).pack(side=tk.RIGHT, padx=5)
+    
+    def _atualizar_botoes_pos_preparacao(self):
+        """Atualiza botões após preparar mensagem"""
+        self._atualizar_botoes()
+    
     def _gerar_nova_mensagem(self):
         """Permite gerar uma nova variação da mensagem"""
         self.text_mensagem.config(state=tk.NORMAL)
@@ -272,31 +291,47 @@ class MessagePreview:
         
         from datetime import datetime
         
-        cursor.execute("""
-            UPDATE pacientes
-            SET status = 'mensagem_enviada',
-                data_envio = ?,
-                tentativas_contato = tentativas_contato + 1,
-                ultima_tentativa = ?
-            WHERE id = ?
-        """, (datetime.now(), datetime.now(), self.paciente_id))
-        
-        # Registrar no histórico
-        cursor.execute("""
-            INSERT INTO historico_mensagens 
-            (paciente_id, mensagem_texto, tipo_mensagem, data_envio, 
-             enviado_por, status_envio)
-            VALUES (?, ?, ?, ?, ?, 'enviada')
-        """, (
-            self.paciente_id,
-            self.text_mensagem.get(1.0, tk.END).strip(),
-            self._determinar_tipo_mensagem(),
-            datetime.now(),
-            self.user_session['user_id']
-        ))
-        
-        conn.commit()
-        conn.close()
+        try:
+            agora = datetime.now()
+            
+            # Buscar data_preparo para incluir no histórico
+            cursor.execute("""
+                SELECT data_preparo FROM pacientes WHERE id = ?
+            """, (self.paciente_id,))
+            result_prep = cursor.fetchone()
+            data_preparacao = result_prep[0] if result_prep and result_prep[0] else agora
+            
+            # Atualizar status do paciente
+            cursor.execute("""
+                UPDATE pacientes
+                SET status = 'mensagem_enviada',
+                    data_envio = ?,
+                    tentativas_contato = tentativas_contato + 1,
+                    ultima_tentativa = ?
+                WHERE id = ?
+            """, (agora, agora, self.paciente_id))
+            
+            # Registrar no histórico com data_preparacao
+            cursor.execute("""
+                INSERT INTO historico_mensagens 
+                (paciente_id, mensagem_texto, tipo_mensagem, data_preparacao,
+                 data_envio, enviado_por, status_envio)
+                VALUES (?, ?, ?, ?, ?, ?, 'enviada')
+            """, (
+                self.paciente_id,
+                self.text_mensagem.get(1.0, tk.END).strip(),
+                self._determinar_tipo_mensagem(),
+                data_preparacao,
+                agora,
+                self.user_session['user_id']
+            ))
+            
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            conn.close()
     
     def _centralizar(self):
         self.window.update_idletasks()
